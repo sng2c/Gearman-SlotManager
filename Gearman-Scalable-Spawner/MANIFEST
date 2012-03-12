@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Gearman-Scalable-Spawner.t
+lib/Gearman/Scalable/Spawner.pm
