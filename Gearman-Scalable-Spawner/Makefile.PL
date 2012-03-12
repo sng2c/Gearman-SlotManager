@@ -1,12 +1,20 @@
-use 5.010000;
+use 5.006;
+use strict;
+use warnings;
 use ExtUtils::MakeMaker;
-# See lib/ExtUtils/MakeMaker.pm for details of how to influence
-# the contents of the Makefile that is written.
+
 WriteMakefile(
-    NAME              => 'Gearman::Scalable::Spawner',
-    VERSION_FROM      => 'lib/Gearman/Scalable/Spawner.pm', # finds $VERSION
-    PREREQ_PM         => {}, # e.g., Module::Name => 1.1
-    ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
-      (ABSTRACT_FROM  => 'lib/Gearman/Scalable/Spawner.pm', # retrieve abstract from module
-       AUTHOR         => 'sng2nara <sng2nara@apple.com>') : ()),
+    NAME                => 'Gearman::Scalable::Spawner',
+    AUTHOR              => q{HyeonSeung Kim <sng2nara@hanmail.net>},
+    VERSION_FROM        => 'lib/Gearman/Scalable/Spawner.pm',
+    ABSTRACT_FROM       => 'lib/Gearman/Scalable/Spawner.pm',
+    ($ExtUtils::MakeMaker::VERSION >= 6.3002
+      ? ('LICENSE'=> 'perl')
+      : ()),
+    PL_FILES            => {},
+    PREREQ_PM => {
+        'Test::More' => 0,
+    },
+    dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
+    clean               => { FILES => 'Gearman-Scalable-Spawner-*' },
 );

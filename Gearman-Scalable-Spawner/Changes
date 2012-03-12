@@ -1,6 +1,5 @@
-Revision history for Perl extension Gearman::Scalable::Spawner.
+Revision history for Gearman-Scalable-Spawner
 
-0.01  Mon Mar 12 14:14:48 2012
-	- original version; created by h2xs 1.23 with options
-		-AX -n Gearman::Scalable::Spawner -b 5.10.0
+0.01    Date/time
+        First version, released on an unsuspecting world.
 
