@@ -4,9 +4,7 @@ use JSON;
 use Data::Dumper;
 use Storable qw(nfreeze thaw);
 
-$q = $ARGV[0];
-use Encode;
-print $q;
+
 my $client = Gearman::Client->new();
 $client->job_servers('mabook.com:9998');
 

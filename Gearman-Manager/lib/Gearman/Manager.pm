@@ -1,6 +1,5 @@
 package Gearman::Manager::BaseWorker;
 
-use AnyEvent;
 use Carp qw( croak );
 use Data::Dumper;
 use Class::Inspector;
@@ -73,7 +72,6 @@ sub register_method {
 
 package Gearman::Manager::ProcManager;
 use strict;
-use AnyEvent;
 
 sub new {
     my $class = shift;
@@ -202,28 +200,31 @@ sub start{
         }
     }
 
-    my $condvar = AnyEvent->condvar;
-    my $w = AnyEvent->signal(signal=>'INT', cb=>sub{ $condvar->send; });
-    
-    #report worker
-    my %dup;
-    map {$dup{$_}=1;} @allservers;
-    @allservers = keys(%dup);
+    {
+        use AnyEvent;
+        my $condvar = AnyEvent->condvar;
+        my $w = AnyEvent->signal(signal=>'INT', cb=>sub{ $condvar->send; });
+        
+        #report worker
+        my %dup;
+        map {$dup{$_}=1;} @allservers;
+        @allservers = keys(%dup);
+        my $report_worker = gearman_worker @allservers;
+        print $report_funcname."\n";
+        $report_worker->register_function(
+            $report_funcname => sub{ 
+                my $job = shift;
+                my $res = $self->_report_busy($job->workload);
+                $job->complete($res);
+            },
+        );
 
-    my $report_worker = gearman_worker @allservers;
-    print $report_funcname."\n";
-    $report_worker->register_function(
-        $report_funcname => sub{ 
-            my $job = shift;
-            my $res = $self->_report_busy($job->workload);
-            $job->complete($res);
-        },
-    );
-
-    ## main loop
-    print "running main loop\n";
-    $condvar->recv;
-    print "ended main loop\n";
+        ## main loop
+        print "running main loop\n";
+        $condvar->recv;
+        print "ended main loop\n";
+        no AnyEvent;
+    }
     map{$_->stop(); undef($_);}@{$self->{workers}};
     undef($self->{workers});
 }
