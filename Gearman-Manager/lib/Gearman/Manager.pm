@@ -3,12 +3,14 @@ use strict;
 use Carp qw( croak );
 use Data::Dumper;
 use Class::Inspector;
-
+use Gearman::Client;
+use Storable qw( nfreeze thaw);
 use base 'Gearman::Worker';
 
 use fields qw(
 jobs
-max_jobs
+conf
+client
 );
 
 sub new {
@@ -16,8 +18,9 @@ sub new {
     $self = fields::new($self) unless ref $self;
     my $slot = shift;
     my $conf = shift;
+     
     $self->{jobs} = 0;
-    $self->{max_jobs} = $conf->{max_jobs};
+    $self->{conf} = $conf;
     $self->SUPER::new(job_servers => $conf->{servers});
     my $method_list = Class::Inspector->methods(ref($self), 'expanded');
     my @methods = map{ $_->[2] } grep{ $_->[1] eq ref($self) }@{$method_list};
@@ -27,13 +30,24 @@ sub new {
         $self->register_method($slot,$m,$conf->{timeout});
     }
 
+    $self->{client} = Gearman::Client->new();
+    $self->{client}->job_servers($self->{conf}->{servers});
 
     return $self;
 }
 
 sub needQuit{
     my $self = shift;
-    return $self->{max_jobs}<$self->{jobs};
+    return $self->{conf}->{max_jobs}<$self->{jobs};
+}
+
+sub report_busy{
+    my $self = shift;
+    my $busy = shift;
+#    print ">>>> report busy $busy\n";
+    $self->{client}->dispatch_background(
+            $self->{conf}->{report_funcname},
+            nfreeze({busy=>$busy,slot=>$self->{conf}->{slot},class=>$self->{conf}->{class}}));
 }
 
 sub register_method {
@@ -46,14 +60,16 @@ sub register_method {
 
     $self->{jobs} = 0;
     my $do_work = sub {
-	print ">>>> work begin #$slot\n";
+#	print ">>>> work begin #$slot\n";
+        $self->report_busy(1);
         my $job = shift;
         my $paramstr = $job->arg;
-
+        
         # call the method
         my $retvals = $self->$method($paramstr);
 
-	print ">>>> work done #$slot\n";
+#	print ">>>> work done #$slot\n";
+        $self->report_busy(0);
         $self->{jobs}++;
         return \$retvals;
     };
@@ -67,7 +83,6 @@ sub register_method {
     }
     return $func_name;
 }
-
 
 
 
@@ -165,14 +180,48 @@ sub new{
     my $conf = shift;
     my $gconf = delete $conf->{global} or {};
     $gconf->{count} = 1 unless $gconf->{count};
-    $gconf->{max_count} = 0 unless $gconf->{max_count};
+    $gconf->{max_count} = $gconf->{count} unless $gconf->{max_count};
     $gconf->{max_jobs} = 0 unless $gconf->{max_jobs};
     $gconf->{timeout} = 0 unless $gconf->{timeout};
     $gconf->{servers} = ['localhost'] unless length(@{$gconf->{servers}});
     $gconf->{type} = 'fork' unless $gconf->{type};
-    my $body  = {conf=>$conf, gconf=>$gconf, workers=>[]};
+
+    my $body  = {conf=>$conf, gconf=>$gconf, workers=>{}};
     $body->{pid} = $$;
     return bless $body, $class;
+}
+
+sub addWorker{
+    my $self = shift;
+    my $class=shift;
+    my $slot=shift;
+    # config
+    my %conf = %{Storable::dclone($self->{gconf})};
+    for my $k ( keys %{$self->{conf}->{$class}} ) {
+        $conf{$k} = $self->{conf}->{$class}->{$k};
+    }
+
+    print "$class $slot\n";
+    %conf = %{Storable::dclone(\%conf)};
+    $conf{max_count} = $conf{count} if $conf{max_count}<$conf{count};
+    $conf{class} = $class;
+    $conf{slot} = $slot;
+    $conf{worker_id} = "$class#$slot";
+    # add creator
+    #my $proc = _fork_proc($class,\%conf,$slot);
+    my $proc;
+    if($conf{'type'} eq 'exec'){
+        $proc = _exec_proc($class,\%conf,$slot);
+    }
+    else{
+        $proc = _fork_proc($class,\%conf,$slot);
+    }
+
+    my $procman = Gearman::Manager::ProcManager->new($class,\%conf,$proc,$slot);
+    $procman->start();#need to fork
+    push(@{$self->{workers}->{$class}}, $procman);
+
+    return @{$conf{servers}};
 }
 
 sub start{
@@ -180,81 +229,91 @@ sub start{
     my @allservers;
     my $parent_pid = $self->{pid};
     my $report_funcname = "report_busy_".$parent_pid;
-
+    $self->{gconf}->{report_funcname} = $report_funcname;
     #spawn all
     foreach my $class (keys %{$self->{conf}}) {
 
-               # config
-        my %conf = %{$self->{gconf}};
-        for my $k ( keys %{$self->{conf}->{$class}} ) {
-            $conf{$k} = $self->{conf}->{$class}->{$k};
-        }
-
-
-        my $slot = 1;
-        foreach my $num (1..$conf{count}) {
-            print "$class $slot\n";
-            print Dumper(\%conf);
-
-            # add creator
-            #my $proc = _fork_proc($class,\%conf,$slot);
-            my $proc;
-            if($conf{'type'} eq 'exec'){
-                $proc = _exec_proc($class,\%conf,$slot);
-            }
-            else{
-                $proc = _fork_proc($class,\%conf,$slot);
-            }
-
-            my $procman = Gearman::Manager::ProcManager->new($class,\%conf,$proc,$slot);
-            $procman->start();#need to fork
-            push(@{$self->{workers}}, $procman);
-
-            push(@allservers,@{$conf{servers}});
+        my $slot = 0;
+        $self->{workers}->{$class} = [];
+        foreach my $num (1..$self->{conf}->{$class}->{count}) {
+            my @servers = $self->addWorker($class,$slot);
             #my $pid = $self->start_worker(servers=>$conf{servers},slot=>$slot,class=>$class);
             #push(@{$self->{workers}}, [$class, $slot, $pid] );
+            push(@allservers,@servers);
             $slot++;
         }
     }
 
-    {
-        use AnyEvent;
-        my $condvar = AnyEvent->condvar;
-        my $w = AnyEvent->signal(signal=>'INT', cb=>sub{ $condvar->send; });
-        
-        #report worker
-        my %dup;
-        map {$dup{$_}=1;} @allservers;
-        @allservers = keys(%dup);
-        my $report_worker = gearman_worker @allservers;
-        print $report_funcname."\n";
-        $report_worker->register_function(
-            $report_funcname => sub{ 
-                my $job = shift;
-                my $res = $self->_report_busy($job->workload);
-                $job->complete($res);
-            },
-        );
+    my $condvar = AnyEvent->condvar;
+    my $w = AnyEvent->signal(signal=>'INT', cb=>sub{ $condvar->send; });
+    
+    #report worker
+    my %dup;
+    map {$dup{$_}=1;} @allservers;
+    @allservers = keys(%dup);
+    my $report_worker = gearman_worker @allservers;
+    print $report_funcname."\n";
+    $report_worker->register_function(
+        $report_funcname => sub{ 
+            my $job = shift;
+            my $res = $self->_report_busy($job->workload);
+            $job->complete($res);
+        },
+    );
 
-        ## main loop
-        print "running main loop\n";
-        $condvar->recv;
-        print "ended main loop\n";
-        no AnyEvent;
+    $self->{scalecheck} = AnyEvent->timer(after=>5,interval=>5, cb=>sub{$self->_on_check_scale();});
+
+    #print Dumper($self->{workers});
+    ## main loop
+    print "running main loop\n";
+    $condvar->recv;
+    print "ended main loop\n";
+
+    foreach my $k (keys %{$self->{workers}}){
+        map{$_->stop(); undef($_);} @{$self->{workers}->{$k}};
     }
-
-    map{$_->stop(); undef($_);}@{$self->{workers}};
     undef($self->{workers});
+    undef($self->{scalecheck});
+    undef($report_worker);
 }
 
 sub _report_busy{
     my $self = shift;
     my $workload = shift;
     my $data = thaw($workload);
-    print "report busy $data\n";
+    #print "!!!!!!! report busy ".Dumper($data)."\n";
+    my $class = $data->{'class'};
+    my $slot = $data->{'slot'};
+    my $busy = $data->{'busy'};
+    $self->{workers}->{$class}->[$slot]->{busy} = $busy;
     return nfreeze($data);
 }
 
+sub _on_check_scale{
+    my $self = shift;
+    print "\n+++++++++++++++++++++++++++++++++++++\n";
+    foreach my $k (keys %{$self->{workers}}){
+        my $curconf = $self->{conf}->{$k};
+        my @workers = @{$self->{workers}->{$k}};
+        my $busy = 0;
+        my @notbusy = grep{$_->{busy}==0;}@workers;
+        print "$k : not busy " . @notbusy . " / " . @workers."\n";
+
+        if( @notbusy == 0 && @workers < $curconf->{max_count} ){
+            # extends
+            print "$k needs more\n";
+            $self->addWorker($k, scalar(@workers));
+        }
+        elsif( @notbusy > 0 && @workers > $curconf->{count} )
+        {
+            print "$k needs less\n";
+            my $worker = pop(@{$self->{workers}->{$k}});
+            $worker->stop();
+            undef($worker);
+        }
+    }
+    print "+++++++++++++++++++++++++++++++++++++\n\n";
+}
 
 sub _fork_proc{
     my $class = shift;
@@ -266,7 +325,7 @@ sub _fork_proc{
         my $ok = eval qq{require $class};
         $@ && die $@;
         $ok || die "$class didn't return a true value!";
-
+        
         
         # create worker and let work
         my Gearman::Manager::BaseWorker $worker = $class->new($slot,$conf);
