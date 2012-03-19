@@ -3,7 +3,7 @@ package TestWorkerAny;
 use lib qw(./lib);
 use Gearman::Manager;
 use base 'Gearman::Manager::BaseWorker';
-sub echo{
+sub work_echo{
         require AnyEvent;
         require EV;
         my $self = shift;
