@@ -23,7 +23,7 @@ sub new {
     $self->{conf} = $conf;
     $self->SUPER::new(job_servers => $conf->{servers});
     my $method_list = Class::Inspector->methods(ref($self), 'expanded');
-    my @methods = map{ $_->[2] } grep{ $_->[1] eq ref($self) }@{$method_list};
+    my @methods = map{ $_->[2] } grep{ $_->[1] eq ref($self) && $_->[2] =~ /^work_/ }@{$method_list};
 
     foreach my $m (@methods) {
         print ">>>> register method : $m #$slot\n";
@@ -55,7 +55,8 @@ sub register_method {
     my $slot = shift;
     my $method  = shift;
     my $timeout = shift;
-    
+    $method =~ /^work_(.+)/;
+    my $method_export = $1;
     croak "$self cannot execute $method" unless $self->can($method);
 
     $self->{jobs} = 0;
@@ -74,7 +75,7 @@ sub register_method {
         return \$retvals;
     };
 
-    my $func_name = ref($self).'::'.$method;
+    my $func_name = ref($self).'::'.$method_export;
     if ($timeout) {
         $self->register_function($func_name, $timeout, $do_work);
     }
@@ -261,7 +262,7 @@ sub start{
         },
     );
 
-    $self->{scalecheck} = AnyEvent->timer(after=>5,interval=>5, cb=>sub{$self->_on_check_scale();});
+    $self->{scalecheck} = AnyEvent->timer(after=>20,interval=>20, cb=>sub{$self->_on_check_scale();});
 
     #print Dumper($self->{workers});
     ## main loop
