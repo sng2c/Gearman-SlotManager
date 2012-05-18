@@ -5,6 +5,8 @@ use Data::Dumper;
 use Class::Inspector;
 use Gearman::Client;
 use Storable qw( nfreeze thaw);
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 use base 'Gearman::Worker';
 
 use fields qw(
@@ -26,7 +28,7 @@ sub new {
     my @methods = map{ $_->[2] } grep{ $_->[1] eq ref($self) && $_->[2] =~ /^work_/ }@{$method_list};
 
     foreach my $m (@methods) {
-        print ">>>> register method : $m #$slot\n";
+        DEBUG ">>>> register method : $m #$slot\n";
         $self->register_method($slot,$m,$conf->{timeout});
     }
 
@@ -44,7 +46,7 @@ sub needQuit{
 sub report_busy{
     my $self = shift;
     my $busy = shift;
-#    print ">>>> report busy $busy\n";
+#    DEBUG ">>>> report busy $busy\n";
     $self->{client}->dispatch_background(
             $self->{conf}->{report_funcname},
             nfreeze({busy=>$busy,slot=>$self->{conf}->{slot},class=>$self->{conf}->{class}}));
@@ -61,7 +63,7 @@ sub register_method {
 
     $self->{jobs} = 0;
     my $do_work = sub {
-#	print ">>>> work begin #$slot\n";
+#	DEBUG ">>>> work begin #$slot\n";
         $self->report_busy(1);
         my $job = shift;
         my $paramstr = $job->arg;
@@ -69,7 +71,7 @@ sub register_method {
         # call the method
         my $retvals = $self->$method($paramstr);
 
-#	print ">>>> work done #$slot\n";
+#	DEBUG ">>>> work done #$slot\n";
         $self->report_busy(0);
         $self->{jobs}++;
         return \$retvals;
@@ -90,6 +92,8 @@ sub register_method {
 package Gearman::Manager::ProcManager;
 use strict;
 
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 sub new {
     my $class = shift;
     my $workerclass = shift;
@@ -102,7 +106,7 @@ sub new {
 
 sub start{
     my $self = shift;
-    print ">> ProcMan start #$self->{slot}\n";
+    DEBUG ">> ProcMan start #$self->{slot}\n";
 
     $self->respawn();
 }
@@ -111,11 +115,11 @@ sub start{
 sub onChildKilled{
     my $self = shift;
     if( $self->{quit} != 1 ){
-        print ">> child is killed and respawn #$self->{slot}\n";
+        DEBUG ">> child is killed and respawn #$self->{slot}\n";
         $self->respawn();
     }
     else{
-        print ">> child is just killed #$self->{slot}\n";
+        DEBUG ">> child is just killed #$self->{slot}\n";
         undef($self->{cw});
     }
 }
@@ -126,7 +130,7 @@ sub stop{
     undef($self->{tw});
     undef($self->{cw});
     kill 'INT', $self->{pid};
-    print ">> KILL #$self->{slot} pid:$self->{pid}\n";
+    DEBUG ">> KILL #$self->{slot} pid:$self->{pid}\n";
 }
 
 sub fork{
@@ -140,13 +144,13 @@ sub fork{
         undef($self->{cw});
         undef($self->{cw});
         $SIG{INT} = $SIG{TERM} = sub { 
-            print ">> child ends by INT or TERM $self->{slot}\n";
+            DEBUG ">> child ends by INT or TERM $self->{slot}\n";
             exit(0); 
         };
-        print ">> child starts #$self->{slot}\n";
+        DEBUG ">> child starts #$self->{slot}\n";
         $0 = $self->{class}."-worker #".$self->{slot};
         $self->{proc}->();
-        print ">> child ends #$self->{slot}\n";
+        DEBUG ">> child ends #$self->{slot}\n";
         exit(0);
         #exec("perl spawner.pl $self->{class}");
     }
@@ -163,7 +167,7 @@ sub respawn{
 
 sub DESTROY{
     my $self = shift;
-    #print "procmanager destruct\n";
+    DEBUG "procmanager destruct\n";
 }
 
 package Gearman::Manager;
@@ -176,6 +180,8 @@ use Carp qw( croak );
 use Storable qw( nfreeze thaw );
 use Data::Dumper;
 use lib qw(. lib );
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 sub new{
     my $class = shift;
     my $conf = shift;
@@ -202,7 +208,7 @@ sub addWorker{
         $conf{$k} = $self->{conf}->{$class}->{$k};
     }
 
-    print "$class $slot\n";
+    DEBUG "$class $slot\n";
     %conf = %{Storable::dclone(\%conf)};
     $conf{max_count} = $conf{count} if $conf{max_count}<$conf{count};
     $conf{class} = $class;
@@ -253,7 +259,7 @@ sub start{
     map {$dup{$_}=1;} @allservers;
     @allservers = keys(%dup);
     my $report_worker = gearman_worker @allservers;
-    print $report_funcname."\n";
+    DEBUG $report_funcname."\n";
     $report_worker->register_function(
         $report_funcname => sub{ 
             my $job = shift;
@@ -264,11 +270,11 @@ sub start{
 
     $self->{scalecheck} = AnyEvent->timer(after=>20,interval=>20, cb=>sub{$self->_on_check_scale();});
 
-    #print Dumper($self->{workers});
+    DEBUG Dumper($self->{workers});
     ## main loop
-    print "running main loop\n";
+    DEBUG "running main loop\n";
     $condvar->recv;
-    print "ended main loop\n";
+    DEBUG "ended main loop\n";
 
     foreach my $k (keys %{$self->{workers}}){
         map{$_->stop(); undef($_);} @{$self->{workers}->{$k}};
@@ -282,7 +288,7 @@ sub _report_busy{
     my $self = shift;
     my $workload = shift;
     my $data = thaw($workload);
-    #print "!!!!!!! report busy ".Dumper($data)."\n";
+    DEBUG "!!!!!!! report busy ".Dumper($data)."\n";
     my $class = $data->{'class'};
     my $slot = $data->{'slot'};
     my $busy = $data->{'busy'};
@@ -292,28 +298,28 @@ sub _report_busy{
 
 sub _on_check_scale{
     my $self = shift;
-    print "\n+++++++++++++++++++++++++++++++++++++\n";
+    DEBUG "\n+++++++++++++++++++++++++++++++++++++\n";
     foreach my $k (keys %{$self->{workers}}){
         my $curconf = $self->{conf}->{$k};
         my @workers = @{$self->{workers}->{$k}};
         my $busy = 0;
         my @notbusy = grep{$_->{busy}==0;}@workers;
-        print "$k : not busy " . @notbusy . " / " . @workers."\n";
+        DEBUG "$k : not busy " . @notbusy . " / " . @workers."\n";
 
         if( @notbusy == 0 && @workers < $curconf->{max_count} ){
             # extends
-            print "$k needs more\n";
+            DEBUG "$k needs more\n";
             $self->addWorker($k, scalar(@workers));
         }
         elsif( @notbusy > 0 && @workers > $curconf->{count} )
         {
-            print "$k needs less\n";
+            DEBUG "$k needs less\n";
             my $worker = pop(@{$self->{workers}->{$k}});
             $worker->stop();
             undef($worker);
         }
     }
-    print "+++++++++++++++++++++++++++++++++++++\n\n";
+    DEBUG "+++++++++++++++++++++++++++++++++++++\n\n";
 }
 
 sub _fork_proc{
@@ -322,7 +328,7 @@ sub _fork_proc{
     my $slot = shift;
     my $creator = sub{
         
-        print "start creator $class by ".uc($conf->{type})." #$slot\n";
+        DEBUG "start creator $class by ".uc($conf->{type})." #$slot\n";
         my $ok = eval qq{require $class};
         $@ && die $@;
         $ok || die "$class didn't return a true value!";
@@ -351,7 +357,7 @@ sub _exec_proc{
     my $conf = shift; 
     my $slot = shift;
     my $confstr = to_json($conf);
-    print $confstr."\n";
+    DEBUG $confstr."\n";
     my $creator = sub{
         exec "perl", "spawn.pl",$class,$slot,$confstr;    
     };
@@ -362,7 +368,7 @@ sub _exec_proc{
 
 
 sub DESTROY{
-    #print "manager destruct\n";
+    DEBUG "manager destruct\n";
 }
 
 
