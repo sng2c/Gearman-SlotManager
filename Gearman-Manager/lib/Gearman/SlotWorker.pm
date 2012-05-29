@@ -1,10 +1,11 @@
 package Gearman::SlotWorker;
 use namespace::autoclean;
-use Moose;
+use Any::Moose;
 use AnyEvent;
 use EV;
-use AnyEvent::Gearman;
+use Gearman::Worker;
 use IPC::AnyEvent::Gearman;
+
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
 
@@ -34,23 +35,34 @@ sub BUILD{
         }
     }
 }
-
+use Data::Dumper;
 sub start{
     my $class = shift;
     my $worker = $class->new();
+   
     my $cv = AE::cv;
 
-    my $w = gearman_worker 'localhost:9999';
+    my $w = Gearman::Worker->new;
+    $w->job_servers('localhost:9999');
+
     foreach my $m (@{$worker->exported}){
         DEBUG "register ".$m->fully_qualified_name;
-        $w->register_function($m->fully_qualified_name=>
-        sub{my $job=shift;
-            return $m->execute($worker,$job);
+        my $fname = $m->fully_qualified_name;
+        my $fcode = $m->body;
+        $w->register_function($fname =>
+        sub{
+            DEBUG "WORKER ". $fname;
+            my $job = shift;
+            my $workload = $job->arg;
+            my $res = $fcode->($worker,$workload);
+            return $res;
         });
     }
 
     my $ipcr = IPC::AnyEvent::Gearman->new(servers=>['localhost:9999']);
     $ipcr->listen();
+
+    my $t = AE::timer 0, 0.1, sub{$w->work(stop_if=>sub{1});};
 
     $cv->recv;
 }

@@ -6,26 +6,13 @@ use Storable qw(nfreeze thaw);
 
 
 my $client = Gearman::Client->new();
-$client->job_servers('mabook.com:9998');
+$client->job_servers('localhost:9999');
 
 my %result;
 my $taskset = $client->new_task_set;
 for(1..5){
-    $taskset->add_task('TestWorker::echo', "PING",
-    {	
-		on_complete => sub{
-			my $resstr = ${$_[0]};
-			print "ECHO: ";
-			print ($resstr);
-			print "\n";
-		}
-	}
-    ); 
-}
-$taskset->wait;
-my $taskset = $client->new_task_set;
-for(1..5){
-    $taskset->add_task('TestWorkerAny::echo', "PING",
+    print "WORK $1\n";
+    $taskset->add_task('TestWorker::dowork', "PING",
     {	
 		on_complete => sub{
 			my $resstr = ${$_[0]};

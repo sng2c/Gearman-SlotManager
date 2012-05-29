@@ -1,6 +1,6 @@
 package TestWorker;
 use namespace::autoclean;
-use Moose;
+use Any::Moose;
 extends 'Gearman::SlotWorker';
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
@@ -10,16 +10,21 @@ sub BUILD{
 };
 sub workmethod{
     my $self = shift;
-    DEBUG "workmethod:".$self;
+    my $data = shift;
+    DEBUG "workmethod:".$data;
+    return "HELLO";
 }
 sub dowork{
     my $self = shift;
-    DEBUG "work:".$self;
+    my $data = shift;
+    DEBUG "work:".$data;
+    return "HELLO";
 }
 
 sub _private{
     my $self = shift;
-    DEBUG "_private:".$self;
+    my $data = shift;
+    DEBUG "_private:".$data;
 }
 
 =pod
