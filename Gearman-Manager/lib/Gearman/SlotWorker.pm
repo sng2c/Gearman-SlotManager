@@ -1,16 +1,19 @@
-package Gearman::WorkerRole;
+package Gearman::SlotWorker;
 use namespace::autoclean;
-use Moose::Role;
-
+use Moose;
+use AnyEvent;
+use EV;
+use AnyEvent::Gearman;
+use IPC::AnyEvent::Gearman;
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
 
 has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]',
 default=>sub{[]});
 
-after 'BUILD'=>sub{
+sub BUILD{
     my $self = shift;
-    DEBUG ref($self);
+
     my $meta = $self->meta();
     my $package = $meta->{package};
     my $exported = $self->exported();
@@ -30,11 +33,25 @@ after 'BUILD'=>sub{
             }
         }
     }
-};
+}
 
+sub start{
+    my $class = shift;
+    my $worker = $class->new();
+    my $cv = AE::cv;
 
+    my $w = gearman_worker 'localhost:9999';
+    foreach my $m (@{$worker->exported}){
+        DEBUG "register ".$m->fully_qualified_name;
+        $w->register_function($m->fully_qualified_name=>
+        sub{my $job=shift;
+            return $m->execute($worker,$job);
+        });
+    }
 
-sub BUILD{
-};
+    my $ipcr = IPC::AnyEvent::Gearman->new(servers=>['localhost:9999']);
+    $ipcr->listen();
 
+    $cv->recv;
+}
 1;

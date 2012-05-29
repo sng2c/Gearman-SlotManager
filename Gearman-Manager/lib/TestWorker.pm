@@ -1,10 +1,13 @@
 package TestWorker;
 use namespace::autoclean;
 use Moose;
-with 'Gearman::WorkerRole';
+extends 'Gearman::SlotWorker';
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
 
+sub BUILD{
+    DEBUG 'BUILD ' . __PACKAGE__;
+};
 sub workmethod{
     my $self = shift;
     DEBUG "workmethod:".$self;
@@ -19,6 +22,7 @@ sub _private{
     DEBUG "_private:".$self;
 }
 
+=pod
 package main;
 
 use Log::Log4perl qw(:easy);
@@ -37,6 +41,6 @@ foreach my $m (@mt){
 }
 
 
-
-
+TestWorker->run();
+=cut
 
