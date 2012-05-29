@@ -6,7 +6,7 @@ use Storable qw(nfreeze thaw);
 
 
 my $client = Gearman::Client->new();
-$client->job_servers('localhost:9999');
+$client->job_servers('localhost:9998');
 
 my %result;
 my $taskset = $client->new_task_set;

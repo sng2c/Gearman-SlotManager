@@ -43,7 +43,7 @@ sub start{
     my $cv = AE::cv;
 
     my $w = Gearman::Worker->new;
-    $w->job_servers('localhost:9999');
+    $w->job_servers('localhost:9998');
 
     foreach my $m (@{$worker->exported}){
         DEBUG "register ".$m->fully_qualified_name;
@@ -59,11 +59,12 @@ sub start{
         });
     }
 
-    my $ipcr = IPC::AnyEvent::Gearman->new(servers=>['localhost:9999']);
+    my $t = AE::timer 0, 0.1, sub{
+        $w->work(stop_if=>sub{1});
+    };
+
+    my $ipcr = IPC::AnyEvent::Gearman->new(servers=>['localhost:9998']);
     $ipcr->listen();
-
-    my $t = AE::timer 0, 0.1, sub{$w->work(stop_if=>sub{1});};
-
     $cv->recv;
 }
 1;
