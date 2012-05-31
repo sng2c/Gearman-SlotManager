@@ -5,7 +5,7 @@ package Gearman::Slot;
 
 use Any::Moose;
 use AnyEvent;
-use EV;
+
 
 
 1;
