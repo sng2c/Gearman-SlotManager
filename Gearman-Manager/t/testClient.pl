@@ -12,7 +12,7 @@ my %result;
 my $taskset = $client->new_task_set;
 for(1..5){
     print "WORK $1\n";
-    $taskset->add_task('TestWorker::dowork', "PING",
+    $taskset->add_task('TestWorker::reverse', "PING",
     {	
 		on_complete => sub{
 			my $resstr = ${$_[0]};

@@ -1,9 +1,13 @@
 package TestWorker;
 use namespace::autoclean;
-use Any::Moose;
-extends 'Gearman::SlotWorker';
+use lib '../lib';
+
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
+
+use Any::Moose;
+
+extends 'Gearman::SlotWorker';
 
 sub BUILD{
     DEBUG 'BUILD ' . __PACKAGE__;
@@ -14,38 +18,15 @@ sub workmethod{
     DEBUG "workmethod:".$data;
     return "HELLO";
 }
-sub dowork{
+sub reverse{
     my $self = shift;
     my $data = shift;
     DEBUG "work:".$data;
-    return "HELLO";
+    return reverse($data);
 }
-
 sub _private{
     my $self = shift;
     my $data = shift;
     DEBUG "_private:".$data;
 }
-
-=pod
-package main;
-
-use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
-my $t = TestWorker->new();
-use Data::Dumper;
-
-
-my @mt = @{$t->exported};
-
-
-foreach my $m (@mt){
-    DEBUG $m->name;
-    #$m->body->();
-    $m->execute($t);
-}
-
-
-TestWorker->run();
-=cut
-
+1;
