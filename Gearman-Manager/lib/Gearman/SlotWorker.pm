@@ -2,6 +2,8 @@ package Gearman::SlotWorker;
 
 # ABSTRACT: A worker launched by Slot
 
+# VERSION
+
 use namespace::autoclean;
 use Any::Moose;
 
@@ -14,7 +16,7 @@ Log::Log4perl->easy_init($DEBUG);
 
 
 has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]', default=>sub{[]});
-has countleft=>(is=>'rw',isa=>'Int',default=>-1);
+has maxwork=>(is=>'rw',isa=>'Int');
 
 sub BUILD{
     my $self = shift;
@@ -40,16 +42,19 @@ sub BUILD{
     }
 }
 
+sub report{
+}
+
 sub start_worker{
     my $class = shift;
-    my @job_servers = @_;
-    die 'Needs job_servers. Call as start_worker(@job_servers)' unless @job_servers;
-    my $worker = $class->new();
+    my %opt = @_;
+    die 'Needs job_servers. Call as start_worker($maxcount, @job_servers)' unless @{$opt->{job_servers}};
+    my $worker = $class->new(%opt);
    
     DEBUG "AnyEventModel=>".AnyEvent::detect;
     my $cv = AE::cv;
 
-    my $w = gearman_worker 'localhost:9998';
+    my $w = gearman_worker @{$opt->{job_servers}};
     $w = AnyEvent::Gearman::Worker::RetryConnection::patch_worker($w);
 
     foreach my $m (@{$worker->exported}){
@@ -63,17 +68,20 @@ sub start_worker{
             my $workload = $job->workload;
             my $res = $fcode->($worker,$workload);
             $job->complete($res);
+
+            if( $worker->maxcount > 0 ){
+                $worker->maxcount($worker->maxcount-1);
+                if( $worker->maxcount == 0 ){
+                    $cv->send;
+                }
+            }
         });
     }
 
-
-    my $ipcr = IPC::AnyEvent::Gearman->new(servers=>[@job_servers]);
-    $ipcr->listen();
     $cv->recv;
 }
+
 __PACKAGE__->meta->make_immutable;
-no Any::Moose;
-no Any::Moose '::Exporter';
 1;
 
 __END__

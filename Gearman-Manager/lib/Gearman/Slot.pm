@@ -1,17 +1,11 @@
-package Gearman::SlotManager;
+package Gearman::Slot;
+
+# ABSTRACT: Slot class
+# VERSION
 
 use Any::Moose;
-
 use AnyEvent;
 use EV;
 
-has config=>(is=>'rw', isa=>'HashRef');
-has slots=>(is=>'rw', isa=>'ArrayRef[]', default=>sub{return [];});
-
-sub start{
-}
-
-sub stop{
-}
 
 1;
