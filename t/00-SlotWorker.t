@@ -1,7 +1,7 @@
 package main;
 
 use lib './t','./lib';
-use Test::More tests=>5;
+use Test::More tests=>4;
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
@@ -20,14 +20,13 @@ gstart($port);
 my $w = TestWorker->new(job_servers=>\@js,cv=>$cv,pch=>undef);
 my $c = gearman_client @js;
 my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>\@js);
-is $w->ipc->channel, $ipc->channel($$), 'check channel';
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
     my $job = shift;
     my $res = shift;
     is $res,'OLLEH','client result ok';
     
     is $ipc->channel($$), $ipc->channel,'check channel 2';
-    $ipc->send($$,'exit');
+    $ipc->send($w->ipc->channel,'exit');
 });
 
 
