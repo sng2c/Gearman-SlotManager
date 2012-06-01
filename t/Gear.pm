@@ -6,15 +6,17 @@ use Exporter;
 @ISA = qw(Exporter);
 @EXPORT = qw(gstart gstop);
 sub gstart{
+    my $port = shift;
     $pid = fork;
     if( $pid ){
         open(FILE,'>gear.pid');
         print FILE $pid;
         close(FILE);
-        DEBUG "gearmand STARTED #$pid";
+        sleep(3);
+        DEBUG "gearmand STARTED #$pid port:$port";
     }
     else{
-        exec('gearmand -p 9998');
+        exec("gearmand -p $port");
     }
 }
 
