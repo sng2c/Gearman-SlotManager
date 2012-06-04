@@ -20,7 +20,7 @@ gstart($port);
 my $slot = Gearman::Slot->new(
     job_servers=>\@js,
     libs=>['./t','./lib'],
-    leftwork=>3,
+    workleft=>3,
     worker_package=>'TestWorker',
     worker_channel=>'child'
 );

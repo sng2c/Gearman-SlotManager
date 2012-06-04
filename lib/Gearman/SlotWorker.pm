@@ -20,7 +20,7 @@ has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
 has cv=>(is=>'rw',required=>1);
 has parent_channel=>(is=>'rw',required=>1);
 has channel=>(is=>'rw',required=>1);
-has leftwork=>(is=>'rw',isa=>'Int', default=>-1);
+has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
 # internal
 has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]', default=>sub{[]});
@@ -38,8 +38,8 @@ sub BUILD{
     my $package = $meta->{package};
     my $exported = $self->exported();
 
-    if( $self->leftwork == 0 ){
-        $self->leftwork(-1);
+    if( $self->workleft == 0 ){
+        $self->workleft(-1);
     }
 
     for my $method ( $meta->get_all_methods) 
@@ -130,11 +130,11 @@ sub register{
                 if( $self->is_stopped ){
                     $self->cv->send('stopped');
                 }
-                if( $self->leftwork > 0 ){
-                    $self->leftwork($self->leftwork-1);
+                if( $self->workleft > 0 ){
+                    $self->workleft($self->workleft-1);
                 }
 
-                if( $self->leftwork == 0 ){
+                if( $self->workleft == 0 ){
                     $self->cv->send('overworked');
                 }
             }

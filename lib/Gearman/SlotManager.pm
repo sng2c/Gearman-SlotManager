@@ -24,7 +24,7 @@ sub BUILD{
         job_servers=>[''],
         min=>1,
         max=>1,
-        leftwork=>0,
+        workleft=>0,
     );
     %global = (%baseconf,%global);
     
