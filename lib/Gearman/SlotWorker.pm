@@ -3,6 +3,7 @@ package Gearman::SlotWorker;
 # ABSTRACT: A worker launched by Slot
 
 # VERSION
+use Devel::GlobalDestruction;
 use namespace::autoclean;
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
@@ -12,17 +13,22 @@ use AnyEvent;
 use AnyEvent::Gearman;
 use AnyEvent::Gearman::Worker::RetryConnection;
 use IPC::AnyEvent::Gearman;
+use Scalar::Util qw(weaken);
 
 # options
 has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
 has cv=>(is=>'rw',required=>1);
-has pch=>(is=>'rw',required=>1);
+has parent_channel=>(is=>'rw',required=>1);
+has channel=>(is=>'rw',required=>1);
 has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
 # internal
 has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]', default=>sub{[]});
 has ipc=>(is=>'rw');
 has worker=>(is=>'rw');
+
+has is_stopped=>(is=>'rw');
+has is_busy=>(is=>'rw');
 
 sub BUILD{
     my $self = shift;
@@ -56,26 +62,35 @@ sub BUILD{
 
     $self->register();
 
-    my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>$self->job_servers);
+    my $ipc = IPC::AnyEvent::Gearman->new(
+        job_servers=>$self->job_servers,
+        channel=>$self->channel,
+        );
     $ipc->on_recv(sub{
         my $msg = shift;
-        DEBUG "recv $msg";
-        if($msg eq 'exit') {
-            $self->cv->send('bekilled');
+        DEBUG "worker [".$self->channel."] recv $msg";
+        if($msg eq 'STOP') {
+            $self->is_stopped(1);
+            if( !$self->is_busy ){
+                DEBUG 'NOT BUSY STOP';
+                $self->cv->send('stopped');
+            }
         }
     });
     $ipc->listen();
     $self->ipc($ipc);
+
+    weaken($self);
 }
 
 sub report{
     my $self = shift;
     my $msg = shift;
 
-    if( defined($self->pch) )
+    if( defined($self->parent_channel) )
     {
         DEBUG "report $msg";
-        $self->ipc->send($self->pch,$msg);
+        $self->ipc->send($self->parent_channel,$msg);
     }
 }
 
@@ -93,6 +108,7 @@ sub register{
                 my $job = shift;
                 my $workload = $job->workload;
                 $self->report('BUSY');
+                $self->is_busy(1);
                 my $res;
                 eval{
                     $res = $fcode->($self,$workload);
@@ -109,7 +125,11 @@ sub register{
                 }
 
                 $self->report('IDLE');
+                $self->is_busy(0);
 
+                if( $self->is_stopped ){
+                    $self->cv->send('stopped');
+                }
                 if( $self->workleft > 0 ){
                     $self->workleft($self->workleft-1);
                 }
@@ -121,8 +141,14 @@ sub register{
         );
     }
     $self->worker($w);
+    weaken($self);
 }
 
+sub DEMOLISH{
+    return if in_global_destruction;
+    my $self = shift;
+    DEBUG __PACKAGE__." DEMOLISHED";
+}
 __PACKAGE__->meta->make_immutable;
 no Any::Moose;
 
