@@ -16,7 +16,7 @@ use UUID::Random;
 
 has libs=>(is=>'rw',isa=>'ArrayRef',default=>sub{[]});
 has job_servers=>(is=>'rw',isa=>'ArrayRef',required=>1);
-has workleft=>(is=>'rw');
+has leftwork=>(is=>'rw');
 has worker_package=>(is=>'rw');
 has worker_channel=>(is=>'rw');
 
@@ -79,12 +79,12 @@ sub spawn{
         my $class = $self->worker_package;
         my $worker_channel = $self->worker_channel;
         my $libs = join(' ',map{"-I$_"}@{$self->libs});;
-        my $workleft = $self->workleft;
+        my $leftwork = $self->leftwork;
 
         my $parent_channel = $self->ipc->channel;
         my $job_servers = '['.join(',',map{"\"$_\""}@{$self->job_servers}).']';
 
-        my $cmd = qq!perl $libs -M$class -e '$class -> Loop(job_servers=>$job_servers,parent_channel=>"$parent_channel",channel=>"$worker_channel",workleft=>$workleft);' !;
+        my $cmd = qq!perl $libs -M$class -e '$class -> Loop(job_servers=>$job_servers,parent_channel=>"$parent_channel",channel=>"$worker_channel",leftwork=>$leftwork);' !;
         
         DEBUG 'spawn '.$cmd;
         my $res = 0;

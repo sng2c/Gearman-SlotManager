@@ -17,7 +17,7 @@ my $t = AE::timer 10,0,sub{ $cv->send('timeout')};
 use_ok('Gearman::Server');
 gstart($port);
 
-my $w = TestWorker->new(job_servers=>\@js,cv=>$cv,parent_channel=>undef,channel=>'test',workleft=>2);
+my $w = TestWorker->new(job_servers=>\@js,cv=>$cv,parent_channel=>undef,channel=>'test',leftwork=>2);
 my $c = gearman_client @js;
 my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>\@js);
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
