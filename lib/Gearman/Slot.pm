@@ -37,8 +37,8 @@ sub BUILD{
         if( $msg eq 'BUSY' ){
             $self->is_busy(1);  
         }
-        elsif( $msg eq 'NOTBUSY' ){
-            $self->is_busy(1);  
+        elsif( $msg eq 'IDLE' ){
+            $self->is_busy(0);  
         }
         elsif( $msg eq 'STOP' ){
             $self->kill();
