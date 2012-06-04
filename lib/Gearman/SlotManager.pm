@@ -13,6 +13,7 @@ use EV;
 
 use Gearman::Slot;
 has slotmap=>(is=>'rw', isa=>'HashRef', default=>sub{ return {}; });
+has confmap=>(is=>'rw', isa=>'HashRef', default=>sub{ return {}; });
 has config=>(is=>'rw', isa=>'HashRef',required=>1);
 
 sub BUILD{
@@ -31,16 +32,23 @@ sub BUILD{
     my %confs = %{$conf->{slots}};
     foreach my $worker (keys %confs){
         my %conf = %{$confs{$worker}};
-        $conf{min} = 1 if( $conf{min} <= 0 );
-        $conf{min} = $conf{max} if( $conf{max} < $conf{min} );
 
         %conf = (%global,%conf);
-        DEBUG Dumper(\%conf);
+        #DEBUG Dumper(\%conf);
 
         my @slots;
         foreach (1 .. $conf{max}){
-
+            my $slot = Gearman::Slot->new(
+                job_servers=>$conf{job_servers},
+                libs=>$conf{libs},
+                workleft=>$conf{workleft},
+                worker_package=>$worker,
+                worker_channel=>$worker.'#'.$_,
+            );
+            push( @slots, $slot);
         }
+        $self->slotmap->{$worker} = \@slots;
+        $self->confmap->{$worker} = \%conf;
     }
 }
 
