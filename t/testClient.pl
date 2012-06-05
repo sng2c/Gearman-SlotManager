@@ -6,11 +6,11 @@ use Storable qw(nfreeze thaw);
 
 
 my $client = Gearman::Client->new();
-$client->job_servers('localhost:9998');
+$client->job_servers('localhost:9955');
 
 my %result;
 my $taskset = $client->new_task_set;
-for(1..5){
+for(1..1000){
     print "WORK $1\n";
     $taskset->add_task('TestWorker::reverse', "PING",
     {	
@@ -19,7 +19,8 @@ for(1..5){
 			print "ECHO: ";
 			print ($resstr);
 			print "\n";
-		}
+		},
+                on_fail=>sub{die "FAIL";}
 	}
     ); 
 }

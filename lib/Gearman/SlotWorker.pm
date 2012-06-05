@@ -10,6 +10,7 @@ Log::Log4perl->easy_init($DEBUG);
 
 use Any::Moose;
 use AnyEvent;
+use EV;
 use AnyEvent::Gearman;
 use AnyEvent::Gearman::Worker::RetryConnection;
 use IPC::AnyEvent::Gearman;
@@ -30,9 +31,10 @@ has worker=>(is=>'rw');
 has is_stopped=>(is=>'rw');
 has is_busy=>(is=>'rw');
 
+has seq=>(is=>'rw',default=>0);
+
 sub BUILD{
     my $self = shift;
-
     # register
     my $meta = $self->meta();
     my $package = $meta->{package};
@@ -79,19 +81,28 @@ sub BUILD{
     });
     $ipc->listen();
     $self->ipc($ipc);
-
     weaken($self);
 }
-
 sub report{
     my $self = shift;
     my $msg = shift;
+    $msg .= " ".(time+$self->seq());
+    $self->seq( $self->seq+1 );
 
     if( defined($self->parent_channel) )
     {
-        DEBUG "report $msg";
+        DEBUG "report ".$self->parent_channel." $msg";
         $self->ipc->send($self->parent_channel,$msg);
     }
+}
+
+sub unregister{
+    my $self = shift;
+    foreach my $m (@{$self->exported}){
+        my $fname = $m->fully_qualified_name;
+        $self->worker->unregister_function($fname);
+    }
+    $self->worker(undef);
 }
 
 sub register{
@@ -104,9 +115,20 @@ sub register{
         my $fcode = $m->body;
         $w->register_function($fname =>
             sub{
-                DEBUG "WORKER ". $fname;
                 my $job = shift;
                 my $workload = $job->workload;
+
+                if( $self->workleft > 0 ){
+                    $self->workleft($self->workleft-1);
+                }
+                if( $self->is_stopped ){
+                    $self->stop_safe('stopped');
+                }
+                if( $self->workleft == 0 ){
+                    $self->stop_safe('overworked');
+                }
+
+                DEBUG "[$fname] '$workload' workleft:".$self->workleft;
                 $self->report('BUSY');
                 $self->is_busy(1);
                 my $res;
@@ -127,26 +149,29 @@ sub register{
                 $self->report('IDLE');
                 $self->is_busy(0);
 
-                if( $self->is_stopped ){
-                    $self->cv->send('stopped');
-                }
-                if( $self->workleft > 0 ){
-                    $self->workleft($self->workleft-1);
-                }
 
-                if( $self->workleft == 0 ){
-                    $self->cv->send('overworked');
-                }
             }
         );
     }
     $self->worker($w);
+    #weaken($w);
     weaken($self);
+}
+
+sub stop_safe{
+    my $self = shift;
+    my $msg = shift;
+    $self->is_stopped(1);
+    $self->unregister;
+    $self->worker(undef);
+    
+    $self->cv->send($msg);
 }
 
 sub DEMOLISH{
     return if in_global_destruction;
     my $self = shift;
+    $self->unregister() if $self->worker;
     DEBUG __PACKAGE__." DEMOLISHED";
 }
 __PACKAGE__->meta->make_immutable;

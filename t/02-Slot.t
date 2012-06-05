@@ -25,7 +25,7 @@ my $slot = Gearman::Slot->new(
     worker_channel=>'child'
 );
 
-$slot->spawn();
+$slot->start();
 
 my $tt = AE::timer 5,0,sub{ 
     $slot->stop();

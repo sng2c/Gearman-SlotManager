@@ -25,17 +25,9 @@ my $slot = Gearman::Slot->new(
     worker_channel=>'child'
 );
 
-$slot->spawn();
+$slot->start();
 
 my $cpid = $slot->worker_pid;
-
-
-#my $ttt;
-#my $tt = AE::timer 5,0,sub{ 
-#    $slot->stop();
-#    is $slot->is_stopped, 1;
-#    $ttt = AE::timer 2,0,sub{$cv->send;};
-#};
 
 my $c = gearman_client @js;
 my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>\@js);
@@ -57,6 +49,7 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
 
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
+$slot->stop();
 undef($ipc);
 undef($t);
 undef($w);
