@@ -32,8 +32,8 @@ my $slotman = Gearman::SlotManager->new(
             },
         slots=>{
             'TestWorker'=>{
-            min=>3, 
-            max=>5,
+            min=>1, 
+            max=>10,
             workleft=>10,
             }
         }
@@ -49,4 +49,3 @@ $slotman->stop;
 undef($slotman);
 gstop();
 
-done_testing();

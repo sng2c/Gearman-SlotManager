@@ -11,12 +11,12 @@ $client->job_servers('localhost:9955');
 my %result;
 my $taskset = $client->new_task_set;
 for(1..1000){
-    print "WORK $1\n";
+    my $n = $_;
     $taskset->add_task('TestWorker::reverse', "PING",
     {	
 		on_complete => sub{
 			my $resstr = ${$_[0]};
-			print "ECHO: ";
+			print "$n ECHO: ";
 			print ($resstr);
 			print "\n";
 		},

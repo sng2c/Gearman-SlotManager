@@ -5,7 +5,7 @@ use Devel::GlobalDestruction;
 # VERSION
 use namespace::autoclean;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+Log::Log4perl->easy_init($ERROR);
 
 use Any::Moose;
 use AnyEvent;
@@ -54,7 +54,6 @@ sub BUILD{
             $self->kill();
         }
     });
-    $ipc->listen;
     $self->ipc($ipc);
     weaken($self);
 

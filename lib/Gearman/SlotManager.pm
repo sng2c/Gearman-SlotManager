@@ -4,7 +4,8 @@ package Gearman::SlotManager;
 use Devel::GlobalDestruction;
 use namespace::autoclean;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+#Log::Log4perl->easy_init($DEBUG);
+Log::Log4perl->easy_init($ERROR);
 use Data::Dumper;
 use Any::Moose;
 
