@@ -15,11 +15,11 @@ use AnyEvent::Gearman;
 use AnyEvent::Gearman::Worker::RetryConnection;
 use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
+use LWP::Simple;
 
 # options
 has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
 has cv=>(is=>'rw',required=>1);
-has parent_channel=>(is=>'rw',required=>1);
 has channel=>(is=>'rw',required=>1);
 has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
@@ -31,7 +31,7 @@ has worker=>(is=>'rw');
 has is_stopped=>(is=>'rw');
 has is_busy=>(is=>'rw');
 
-has seq=>(is=>'rw',default=>0);
+has sbbaseurl=>(is=>'rw',default=>sub{''});
 
 sub BUILD{
     my $self = shift;
@@ -68,6 +68,7 @@ sub BUILD{
         job_servers=>$self->job_servers,
         channel=>$self->channel,
         );
+
     $ipc->on_recv(sub{
         my $msg = shift;
         DEBUG "worker [".$self->channel."] recv $msg";
@@ -83,16 +84,13 @@ sub BUILD{
     $self->ipc($ipc);
     weaken($self);
 }
+
 sub report{
     my $self = shift;
-    my $msg = shift;
-    $msg .= " ".(time+$self->seq());
-    $self->seq( $self->seq+1 );
-
-    if( defined($self->parent_channel) )
-    {
-        DEBUG "report ".$self->parent_channel." $msg";
-        $self->ipc->send($self->parent_channel,$msg);
+    my $msg = lc(shift);
+    if($self->sbbaseurl){
+        DEBUG "report $msg ".$self->channel;
+        get($self->sbbaseurl.'/'.$msg.'?channel='.$self->channel);
     }
 }
 

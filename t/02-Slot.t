@@ -22,7 +22,7 @@ my $slot = Gearman::Slot->new(
     libs=>['./t','./lib'],
     workleft=>3,
     worker_package=>'TestWorker',
-    worker_channel=>'child'
+    worker_channel=>'child',
 );
 
 $slot->start();

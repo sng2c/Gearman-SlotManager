@@ -16,7 +16,8 @@ sub workmethod{
 sub reverse{
     my $self = shift;
     my $data = shift;
-    DEBUG "work:".$data;
+
+    sleep(1);
     return reverse($data);
 }
 sub _private{

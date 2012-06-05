@@ -10,11 +10,15 @@ use Any::Moose;
 
 use AnyEvent;
 use EV;
+use AnyEvent::HTTPD;
+use Scalar::Util qw(weaken);
 
 use Gearman::Slot;
 has slotmap=>(is=>'rw', isa=>'HashRef', default=>sub{ return {}; });
 has config=>(is=>'rw', isa=>'HashRef',required=>1);
 has idle_watcher=>(is=>'rw');
+has httpd=>(is=>'rw');
+has port=>(is=>'rw',default=>sub{return 55995;});
 sub BUILD{
     my $self = shift;
 
@@ -36,18 +40,41 @@ sub BUILD{
         DEBUG Dumper(\%conf);
 
         my @slots;
-        foreach (1 .. $conf{max}){
+        foreach (0 .. $conf{max}-1){
             my $slot = Gearman::Slot->new(
                 job_servers=>$conf{job_servers},
                 libs=>$conf{libs},
                 workleft=>$conf{workleft},
                 worker_package=>$worker,
-                worker_channel=>$worker.'#'.$_,
+                worker_channel=>$worker.'__'.$_,
+                sbbaseurl=>'http://localhost:'.$self->port,
             );
             push( @slots, $slot);
         }
         $self->slotmap->{$worker} = {conf=>\%conf, slots=>\@slots};
     }
+
+    my $httpd = AnyEvent::HTTPD->new(port=>$self->port);
+    $httpd->reg_cb (
+        '/busy'=>sub{
+            my ($httpd,$req) = @_;
+            DEBUG "SB busy ".$req->parm('channel');
+            my ($key,$idx) = split(/__/,$req->parm('channel'));
+            DEBUG "SB busy $key $idx";
+            $self->slots($key)->[$idx]->is_busy(1);
+            $req->respond({content=>['text/plain','ok']});
+        },
+        '/idle'=>sub{
+            my ($httpd,$req) = @_;
+            DEBUG "SB idle ".$req->parm('channel');
+            my ($key,$idx) = split(/__/,$req->parm('channel'));
+            DEBUG "SB idle $key $idx";
+            $self->slots($key)->[$idx]->is_busy(0);
+            $req->respond({content=>['text/plain','ok']});
+        },
+    );
+    $self->httpd($httpd);
+    weaken($self);
 }
 
 sub slots{
