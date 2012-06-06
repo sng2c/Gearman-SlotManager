@@ -212,25 +212,6 @@ make TestWorker.pm
         #...
     }
 
-then generally
-
-    use AnyEvent;
-    use TestWorker;
-    my $cv = AE::cv;
-
-    my $worker = TestWorker->new(job_servers=>['localhost:9998'],cv=>$cv);
-
-    $cv->recv;
-
-or 
-
-    use TestWorker;
-    TestWorker->Loop(job_servers=>['localhost:9998']);
-
-or in shell
-
-    perl -MTestWorker -e 'TestWorker->Loop(job_servers=>["localhost:9998"])'
-
 You can see only 'reverse'
 
 =cut
