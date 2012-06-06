@@ -6,18 +6,17 @@ package Gearman::SlotWorker;
 use Devel::GlobalDestruction;
 use namespace::autoclean;
 use Log::Log4perl qw(:easy);
-#Log::Log4perl->easy_init($DEBUG);
-Log::Log4perl->easy_init($ERROR);
+Log::Log4perl->easy_init($DEBUG);
+#Log::Log4perl->easy_init($ERROR);
 
 use Any::Moose;
 use AnyEvent;
 use EV;
 use AnyEvent::Gearman;
 use AnyEvent::Gearman::Worker::RetryConnection;
-use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
 use LWP::Simple;
-
+use POSIX;
 # options
 has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
 has cv=>(is=>'rw',required=>1);
@@ -26,13 +25,14 @@ has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
 # internal
 has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]', default=>sub{[]});
-has ipc=>(is=>'rw');
 has worker=>(is=>'rw');
 
 has is_stopped=>(is=>'rw');
 has is_busy=>(is=>'rw');
 
 has sbbaseurl=>(is=>'rw',default=>sub{''});
+
+has sigw=>(is=>'rw');
 
 sub BUILD{
     my $self = shift;
@@ -65,24 +65,14 @@ sub BUILD{
 
     $self->register();
 
-    my $ipc = IPC::AnyEvent::Gearman->new(
-        job_servers=>$self->job_servers,
-        channel=>$self->channel,
-        );
-
-    $ipc->on_recv(sub{
-        my $msg = shift;
-        DEBUG "worker [".$self->channel."] recv $msg";
-        if($msg eq 'STOP') {
-            $self->is_stopped(1);
-            if( !$self->is_busy ){
-                DEBUG 'NOT BUSY STOP';
-                $self->cv->send('stopped');
-            }
+    my $sigw = AE::signal SIGINT,sub{
+        $self->is_stopped(1);
+        if( !$self->is_busy ){
+            DEBUG 'SIGINT STOP';
+            $self->stop_safe('stopped');
         }
-    });
-    $ipc->listen();
-    $self->ipc($ipc);
+    };
+    $self->sigw($sigw);
     weaken($self);
 }
 

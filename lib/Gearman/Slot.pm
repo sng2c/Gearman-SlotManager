@@ -10,17 +10,17 @@ Log::Log4perl->easy_init($ERROR);
 use Any::Moose;
 use AnyEvent;
 use Gearman::SlotWorker;
-use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
 use UUID::Random;
 use Data::Dumper;
+use POSIX;
+
 has libs=>(is=>'rw',isa=>'ArrayRef',default=>sub{[]});
 has job_servers=>(is=>'rw',isa=>'ArrayRef',required=>1);
 has workleft=>(is=>'rw');
 has worker_package=>(is=>'rw');
 has worker_channel=>(is=>'rw');
 
-has ipc=>(is=>'rw');
 has is_busy=>(is=>'rw',default=>0);
 has is_stopped=>(is=>'rw',default=>1);
 has sbbaseurl=>(is=>'rw',default=>sub{''});
@@ -31,32 +31,6 @@ has worker_pid=>(is=>'rw');
 
 sub BUILD{
     my $self = shift;
-    
-    my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>$self->job_servers,
-    channel=>UUID::Random::generate);
-    $ipc->on_recv(sub{
-        my ($msg,$seq) = split(/\s+/,shift(@_));
-    
-        if( $seq <= $self->seq ){
-            return;
-        }
-
-        $self->seq($seq);
-        if( $msg eq 'BUSY' ){
-            DEBUG "SET BUSY ".$self->ipc->channel;
-            $self->is_busy(1);  
-        }
-        elsif( $msg eq 'IDLE' ){
-            DEBUG "SET IDLE ".$self->ipc->channel;
-            $self->is_busy(0);  
-        }
-        elsif( $msg eq 'STOP' ){
-            $self->kill();
-        }
-    });
-    $self->ipc($ipc);
-    weaken($self);
-
 }
 
 sub is_idle{
@@ -69,9 +43,12 @@ sub is_running{
 }
 
 sub stop{
+    DEBUG 'stop called';
     my $self = shift;
     $self->is_stopped(1);
-    $self->ipc->send($self->worker_channel,'STOP');
+    if( $self->worker_pid ){
+        kill SIGINT, $self->worker_pid;
+    }
 }
 
 sub start{
@@ -120,7 +97,7 @@ sub DEMOLISH{
     my $self = shift;
     if( $self->worker_pid ){
         DEBUG 'killed child forcely';
-        kill 9, $self->worker_pid;
+        kill SIGKILL, $self->worker_pid;
     }
 }
 

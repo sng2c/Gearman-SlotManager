@@ -7,17 +7,16 @@ use Any::Moose;
 
 extends 'Gearman::SlotWorker';
 
-sub workmethod{
+sub slowreverse{
     my $self = shift;
     my $data = shift;
-    DEBUG "workmethod:".$data;
-    return "HELLO";
+    sleep(1);
+    return reverse($data);
 }
 sub reverse{
     my $self = shift;
     my $data = shift;
 
-    sleep(1);
     return reverse($data);
 }
 sub _private{

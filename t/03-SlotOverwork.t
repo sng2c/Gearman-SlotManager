@@ -6,8 +6,9 @@ use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
 use Gearman::Slot;
-use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 my $port = '9955';
 my @js = ("localhost:$port");
 my $cv = AE::cv;
@@ -30,7 +31,6 @@ $slot->start();
 my $cpid = $slot->worker_pid;
 
 my $c = gearman_client @js;
-my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>\@js);
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
     my $job = shift;
     my $res = shift;
@@ -42,7 +42,6 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
         is $res,'OLLEH','client result ok';
 
         isnt $slot->worker_pid, $cpid,'worker overworked';
-        $slot->stop();
         $cv->send;
     });
 });
@@ -50,7 +49,6 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
 $slot->stop();
-undef($ipc);
 undef($t);
 undef($w);
 undef($c);

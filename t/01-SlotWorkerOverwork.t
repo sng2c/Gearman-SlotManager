@@ -6,7 +6,9 @@ use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
 use TestWorker;
-use IPC::AnyEvent::Gearman;
+#
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 
 my $port = '9955';
 my @js = ("localhost:$port");
@@ -19,7 +21,6 @@ gstart($port);
 
 my $w = TestWorker->new(job_servers=>\@js,cv=>$cv,parent_channel=>undef,channel=>'test',workleft=>2);
 my $c = gearman_client @js;
-my $ipc = IPC::AnyEvent::Gearman->new(job_servers=>\@js);
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
 });
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
@@ -29,7 +30,6 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
 
 my $res = $cv->recv;
 is $res,'overworked','overwork check';
-undef($ipc);
 undef($t);
 undef($w);
 undef($c);

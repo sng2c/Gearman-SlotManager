@@ -9,7 +9,6 @@ use Gearman::SlotManager;
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($DEBUG);
 
-use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
 my $port = '9955';
 my @js = ("localhost:$port");
@@ -40,7 +39,8 @@ my $slotman = Gearman::SlotManager->new(
             workleft=>10,
             }
         }
-    }
+    },
+    port=>55595,
 );
 
 $slotman->start();
@@ -49,6 +49,8 @@ my $c = gearman_client @js;
 foreach (1 .. 10){
     my $n = $_;
     my $str = "HELLO$n";
+    DEBUG 'cl';
+
     $c->add_task(
         'TestWorker::reverse'=>$str,
         on_complete=>sub{is $_[1], reverse($str),"check $n";},
@@ -60,7 +62,6 @@ my $tt = AE::timer 5,0,sub{
 
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
-undef($ipc);
 undef($tt);
 $slotman->stop;
 undef($slotman);

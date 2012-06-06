@@ -6,7 +6,6 @@ use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
 use Gearman::Slot;
-use IPC::AnyEvent::Gearman;
 use Scalar::Util qw(weaken);
 my $port = '9955';
 my @js = ("localhost:$port");
@@ -35,7 +34,6 @@ my $tt = AE::timer 5,0,sub{
 
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
-undef($ipc);
 undef($t);
 undef($tt);
 undef($slot);
