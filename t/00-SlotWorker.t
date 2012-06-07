@@ -1,6 +1,6 @@
 package main;
 
-use lib './t','./lib';
+use lib 't/lib';
 use Test::More tests=>3;
 use Gear;
 use AnyEvent;

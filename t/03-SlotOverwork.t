@@ -1,6 +1,6 @@
 package main;
 
-use lib './t','./lib';
+use lib 't/lib';
 use Test::More tests=>5;
 use Gear;
 use AnyEvent;
@@ -20,7 +20,7 @@ gstart($port);
 
 my $slot = Gearman::Slot->new(
     job_servers=>\@js,
-    libs=>['./t','./lib'],
+    libs=>['t/lib','./lib'],
     workleft=>1,
     worker_package=>'TestWorker',
     worker_channel=>'child'

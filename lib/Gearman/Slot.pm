@@ -1,9 +1,10 @@
 package Gearman::Slot;
 
+use namespace::autoclean;
+
 use Devel::GlobalDestruction;
 # ABSTRACT: Slot class
 # VERSION
-use namespace::autoclean;
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($ERROR);
 

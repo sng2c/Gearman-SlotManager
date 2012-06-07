@@ -1,6 +1,6 @@
 package main;
 
-use lib './t','./lib';
+use lib 't/lib';
 use Test::More tests=>2;
 use Gear;
 use AnyEvent;
@@ -22,7 +22,7 @@ my $slotman = Gearman::SlotManager->new(
     {
         global=>{
             job_servers=>\@js,
-            libs=>['./t','./lib'],
+            libs=>['t/lib','./lib'],
             max=>3,
             },
         slots=>{
