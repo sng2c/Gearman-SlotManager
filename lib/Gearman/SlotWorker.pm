@@ -6,8 +6,7 @@ package Gearman::SlotWorker;
 use Devel::GlobalDestruction;
 use namespace::autoclean;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
-#Log::Log4perl->easy_init($ERROR);
+Log::Log4perl->easy_init($ERROR);
 
 use Any::Moose;
 use AnyEvent;
@@ -16,7 +15,7 @@ use AnyEvent::Gearman;
 use AnyEvent::Gearman::Worker::RetryConnection;
 use Scalar::Util qw(weaken);
 use LWP::Simple;
-use POSIX;
+
 # options
 has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
 has cv=>(is=>'rw',required=>1);
@@ -65,7 +64,7 @@ sub BUILD{
 
     $self->register();
 
-    my $sigw = AE::signal SIGINT,sub{
+    my $sigw = AE::signal 'INT',sub{
         $self->is_stopped(1);
         if( !$self->is_busy ){
             DEBUG 'SIGINT STOP';

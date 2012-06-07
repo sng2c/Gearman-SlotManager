@@ -31,9 +31,9 @@ my $slotman = Gearman::SlotManager->new(
             },
         slots=>{
             'TestWorker'=>{
-            min=>1, 
-            max=>10,
-            workleft=>10,
+            min=>20, 
+            max=>50,
+            workleft=>0,
             }
         }
     }

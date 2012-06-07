@@ -157,3 +157,14 @@ sub DEMOLISH{
 
 __PACKAGE__->meta->make_immutable;
 1;
+__END__
+
+=pod
+
+=head1 SYNOPSIS
+
+Will be updated soon.
+
+See testManager.pl in Gearman::SlotManager directory.
+
+=cut

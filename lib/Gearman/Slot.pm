@@ -11,9 +11,7 @@ use Any::Moose;
 use AnyEvent;
 use Gearman::SlotWorker;
 use Scalar::Util qw(weaken);
-use UUID::Random;
 use Data::Dumper;
-use POSIX;
 
 has libs=>(is=>'rw',isa=>'ArrayRef',default=>sub{[]});
 has job_servers=>(is=>'rw',isa=>'ArrayRef',required=>1);
@@ -47,13 +45,12 @@ sub stop{
     my $self = shift;
     $self->is_stopped(1);
     if( $self->worker_pid ){
-        kill SIGINT, $self->worker_pid;
+        kill 2, $self->worker_pid;
     }
 }
 
 sub start{
     my $self = shift;
-    $self->is_stopped(0);
     
     my $cpid = fork();
     if( $cpid ){
@@ -70,6 +67,7 @@ sub start{
                 $self->worker_watcher(undef);
             }
         });
+        $self->is_stopped(0);
         weaken($self);
     }
     else{
@@ -97,7 +95,7 @@ sub DEMOLISH{
     my $self = shift;
     if( $self->worker_pid ){
         DEBUG 'killed child forcely';
-        kill SIGKILL, $self->worker_pid;
+        kill 9, $self->worker_pid;
     }
 }
 

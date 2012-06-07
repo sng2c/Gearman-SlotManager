@@ -7,7 +7,7 @@ use AnyEvent;
 use AnyEvent::Gearman;
 use Gearman::SlotManager;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+Log::Log4perl->easy_init($ERROR);
 
 use Scalar::Util qw(weaken);
 my $port = '9955';

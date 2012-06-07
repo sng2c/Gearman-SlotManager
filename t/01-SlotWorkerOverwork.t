@@ -6,9 +6,9 @@ use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
 use TestWorker;
-#
+
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+Log::Log4perl->easy_init($ERROR);
 
 my $port = '9955';
 my @js = ("localhost:$port");
