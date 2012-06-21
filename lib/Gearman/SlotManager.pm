@@ -10,7 +10,6 @@ use Data::Dumper;
 use Any::Moose;
 
 use AnyEvent;
-use EV;
 use AnyEvent::HTTPD;
 use Scalar::Util qw(weaken);
 
