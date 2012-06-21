@@ -46,7 +46,7 @@ sub stop{
     my $self = shift;
     $self->is_stopped(1);
     if( $self->worker_pid ){
-        kill 2, $self->worker_pid;
+        kill INT => $self->worker_pid;
     }
 }
 

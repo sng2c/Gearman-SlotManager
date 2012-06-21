@@ -8,6 +8,7 @@ use AnyEvent::Gearman;
 use Gearman::Slot;
 use Scalar::Util qw(weaken);
 use Log::Log4perl qw(:easy);
+#Log::Log4perl->easy_init($ERROR);
 Log::Log4perl->easy_init($ERROR);
 my $port = '9955';
 my @js = ("localhost:$port");
@@ -41,7 +42,7 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
         my $res = shift;
         is $res,'OLLEH','client result ok';
 
-        isnt $slot->worker_pid, $cpid,'worker overworked';
+        isnt $slot->worker_pid, $cpid,'worker respawned';
         $cv->send;
     });
 });

@@ -6,19 +6,16 @@ use namespace::autoclean;
 # VERSION
 use Devel::GlobalDestruction;
 use Log::Log4perl qw(:easy);
+#Log::Log4perl->easy_init($DEBUG);
 Log::Log4perl->easy_init($ERROR);
 
 use Any::Moose;
-use AnyEvent;
-use EV;
-use AnyEvent::Gearman;
-use AnyEvent::Gearman::Worker::RetryConnection;
+use Gearman::Worker;
 use Scalar::Util qw(weaken);
 use LWP::Simple;
 
 # options
 has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
-has cv=>(is=>'rw',required=>1);
 has channel=>(is=>'rw',required=>1);
 has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
@@ -30,8 +27,6 @@ has is_stopped=>(is=>'rw');
 has is_busy=>(is=>'rw');
 
 has sbbaseurl=>(is=>'rw',default=>sub{''});
-
-has sigw=>(is=>'rw');
 
 sub BUILD{
     my $self = shift;
@@ -61,17 +56,13 @@ sub BUILD{
             }
         }
     }
+    
+    $SIG{INT} = sub{
+        $self->stop_safe('SIGINT');
+        exit;
+    };
 
     $self->register();
-
-    my $sigw = AE::signal 'INT',sub{
-        $self->is_stopped(1);
-        if( !$self->is_busy ){
-            DEBUG 'SIGINT STOP';
-            $self->stop_safe('stopped');
-        }
-    };
-    $self->sigw($sigw);
     weaken($self);
 }
 
@@ -95,8 +86,8 @@ sub unregister{
 
 sub register{
     my $self = shift;
-    my $w = gearman_worker @{$self->job_servers};
-    $w = AnyEvent::Gearman::Worker::RetryConnection::patch_worker($w);
+    my $w = Gearman::Worker->new;
+    $w->job_servers(@{$self->job_servers});
     foreach my $m (@{$self->exported}){
         DEBUG "register ".$m->fully_qualified_name;
         my $fname = $m->fully_qualified_name;
@@ -104,7 +95,22 @@ sub register{
         $w->register_function($fname =>
             sub{
                 my $job = shift;
-                my $workload = $job->workload;
+                my $workload = $job->arg;
+
+                DEBUG "[$fname] '$workload' workleft:".$self->workleft;
+                $self->report('BUSY');
+                $self->is_busy(1);
+                my $res;
+                eval{
+                    $res = $fcode->($self,$workload);
+                };
+                if ($@){
+                    ERROR $@;
+                    return;
+                }
+
+                $self->report('IDLE');
+                $self->is_busy(0);
 
                 if( $self->workleft > 0 ){
                     $self->workleft($self->workleft-1);
@@ -116,28 +122,8 @@ sub register{
                     $self->stop_safe('overworked');
                 }
 
-                DEBUG "[$fname] '$workload' workleft:".$self->workleft;
-                $self->report('BUSY');
-                $self->is_busy(1);
-                my $res;
-                eval{
-                    $res = $fcode->($self,$workload);
-                };
-                if ($@){
-                    ERROR $@;
-                    $job->fail;
-                }
-                elsif ( !defined($res) ){
-                    $job->fail;
-                }
-                else{
-                    $job->complete($res);
-                }
 
-                $self->report('IDLE');
-                $self->is_busy(0);
-
-
+                return $res;
             }
         );
     }
@@ -146,14 +132,19 @@ sub register{
     weaken($self);
 }
 
+sub work{
+    my $self = shift;
+    $self->worker->work(stop_if=>sub{ $self->is_stopped } );
+    DEBUG "stop completely";
+}
+
 sub stop_safe{
     my $self = shift;
     my $msg = shift;
     $self->is_stopped(1);
     $self->unregister;
     $self->worker(undef);
-    
-    $self->cv->send($msg);
+    DEBUG "stop_safe $msg";
 }
 
 sub DEMOLISH{
@@ -169,16 +160,16 @@ sub Loop{
     die 'Use like PACKAGE->Loop(%opts).' unless $class;
     die 'You need to use your own class extending '. __PACKAGE__ .'!' if $class eq __PACKAGE__;
     my %opt = @_;
-    my $cv = AE::cv;
 
     my $worker;
 
     eval{
-        $worker = $class->new(%opt,cv=>$cv);
+        $worker = $class->new(%opt);
     };
     die $@ if($@);
 
-    $cv->recv;
+    $worker->work();
+
 }
 
 __PACKAGE__->meta->make_immutable;
