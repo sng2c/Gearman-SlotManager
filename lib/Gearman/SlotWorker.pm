@@ -57,11 +57,6 @@ sub BUILD{
         }
     }
     
-    $SIG{INT} = sub{
-        $self->stop_safe('SIGINT');
-        exit;
-    };
-
     $self->register();
     weaken($self);
 }
@@ -156,12 +151,18 @@ sub DEMOLISH{
 
 # class member
 sub Loop{
+
     my $class = shift;
     die 'Use like PACKAGE->Loop(%opts).' unless $class;
     die 'You need to use your own class extending '. __PACKAGE__ .'!' if $class eq __PACKAGE__;
     my %opt = @_;
 
     my $worker;
+    $SIG{INT} = sub{
+        $worker->stop_safe('SIGINT');
+        exit;
+    };
+
 
     eval{
         $worker = $class->new(%opt);

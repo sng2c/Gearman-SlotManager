@@ -39,7 +39,6 @@ $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
 undef($t);
-undef($w);
 undef($c);
 kill INT => $ww;
 gstop();
