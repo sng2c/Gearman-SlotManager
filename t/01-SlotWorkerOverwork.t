@@ -26,16 +26,19 @@ if( !$ww ){
     $w->work;
 }
 
+my $cnt = 2;
 my $c = gearman_client @js;
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
     my $job = shift;
     my $res = shift;
     is $res,'OLLEH','client result ok';
+    $cv->send if( --$cnt == 0 );
 });
 $c->add_task('TestWorker::reverse'=>'HELLO', on_complete=>sub{
     my $job = shift;
     my $res = shift;
     is $res,'OLLEH','client result ok';
+    $cv->send if( --$cnt == 0 );
 });
 
 
