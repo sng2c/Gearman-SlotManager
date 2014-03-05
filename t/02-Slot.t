@@ -1,11 +1,13 @@
 package main;
 
-use lib 't/lib';
+use lib qw( lib t/lib );
 use Test::More tests=>3;
+use Log::Log4perl qw(:easy);
+Log::Log4perl->easy_init($DEBUG);
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
-use Gearman::Slot;
+use AnyEvent::Gearman::WorkerPool::Slot;
 use Scalar::Util qw(weaken);
 my $port = '9955';
 my @js = ("localhost:$port");
@@ -16,7 +18,7 @@ my $t = AE::timer 10,0,sub{ $cv->send('timeout')};
 use_ok('Gearman::Server');
 gstart($port);
 
-my $slot = Gearman::Slot->new(
+my $slot = AnyEvent::Gearman::WorkerPool::Slot->new(
     job_servers=>\@js,
     libs=>['t/lib','./lib'],
     workleft=>3,

@@ -1,11 +1,11 @@
 package main;
 
-use lib 't/lib';
+use lib qw( lib t/lib );
 use Test::More tests=>12;
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
-use Gearman::SlotManager;
+use AnyEvent::Gearman::WorkerPool;
 use Log::Log4perl qw(:easy);
 Log::Log4perl->easy_init($ERROR);
 
@@ -24,7 +24,7 @@ $cv->send;
 };
 
 my $t = AE::timer 10,0,sub{ $cv->send('timeout')};
-my $slotman = Gearman::SlotManager->new(
+my $slotman = AnyEvent::Gearman::WorkerPool->new(
     config=>
     {
         global=>{

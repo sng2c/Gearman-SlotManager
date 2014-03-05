@@ -1,17 +1,13 @@
-package Gearman::Slot;
+package AnyEvent::Gearman::WorkerPool::Slot;
 
-use namespace::autoclean;
 
-use Devel::GlobalDestruction;
 # ABSTRACT: Slot class
 # VERSION
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($ERROR);
 
-use Any::Moose;
+use Moose;
 use AnyEvent;
-use Gearman::SlotWorker;
-use Scalar::Util qw(weaken);
+use AnyEvent::Gearman::WorkerPool::Worker;
 use Data::Dumper;
 
 has libs=>(is=>'rw',isa=>'ArrayRef',default=>sub{[]});
@@ -69,7 +65,6 @@ sub start{
             }
         });
         $self->is_stopped(0);
-        weaken($self);
     }
     else{
         my $class = $self->worker_package;
@@ -80,7 +75,7 @@ sub start{
 
         my $job_servers = '['.join(',',map{"\"$_\""}@{$self->job_servers}).']';
 
-        my $cmd = qq!perl $libs -M$class -e '$class -> Loop(job_servers=>$job_servers,channel=>"$worker_channel",workleft=>$workleft,sbbaseurl=>"$sbbaseurl");' !;
+        my $cmd = qq!$^X $libs -M$class -e '$class -> Loop(job_servers=>$job_servers,channel=>"$worker_channel",workleft=>$workleft,sbbaseurl=>"$sbbaseurl");' !;
         
         DEBUG 'start '.$cmd;
         my $res = 0;
@@ -90,7 +85,6 @@ sub start{
 }
 
 sub DEMOLISH{
-    return if in_global_destruction;
 
     DEBUG __PACKAGE__.' DEMOLISHED';
     my $self = shift;
@@ -100,5 +94,4 @@ sub DEMOLISH{
     }
 }
 
-__PACKAGE__->meta->make_immutable;
 1;

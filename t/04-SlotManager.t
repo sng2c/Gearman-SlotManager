@@ -1,11 +1,11 @@
 package main;
 
-use lib 't/lib';
+use lib qw( lib t/lib );
 use Test::More tests=>2;
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
-use Gearman::SlotManager;
+use AnyEvent::Gearman::WorkerPool;
 
 use Scalar::Util qw(weaken);
 my $port = '9955';
@@ -17,7 +17,7 @@ my $t = AE::timer 10,0,sub{ $cv->send('timeout')};
 use_ok('Gearman::Server');
 gstart($port);
 
-my $slotman = Gearman::SlotManager->new(
+my $slotman = AnyEvent::Gearman::WorkerPool->new(
     config=>
     {
         global=>{
@@ -28,7 +28,8 @@ my $slotman = Gearman::SlotManager->new(
         slots=>{
             'TestWorker'=>{}
         }
-    }
+    },
+    port=>55595,
 );
 
 my $tt = AE::timer 5,0,sub{ 

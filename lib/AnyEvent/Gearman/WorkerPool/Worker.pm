@@ -1,17 +1,12 @@
-package Gearman::SlotWorker;
-use namespace::autoclean;
+package AnyEvent::Gearman::WorkerPool::Worker;
 
 # ABSTRACT: A worker launched by Slot
-
 # VERSION
-use Devel::GlobalDestruction;
-use Log::Log4perl qw(:easy);
-#Log::Log4perl->easy_init($DEBUG);
-Log::Log4perl->easy_init($ERROR);
 
-use Any::Moose;
+use Log::Log4perl qw(:easy);
+
+use Moose;
 use Gearman::Worker;
-use Scalar::Util qw(weaken);
 use LWP::Simple;
 
 # options
@@ -20,7 +15,7 @@ has channel=>(is=>'rw',required=>1);
 has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
 # internal
-has exported=>(is=>'ro',isa=>'ArrayRef[Class::MOP::Method]', default=>sub{[]});
+has exported=>(is=>'ro',default=>sub{[]});
 has worker=>(is=>'rw');
 
 has is_stopped=>(is=>'rw');
@@ -30,16 +25,17 @@ has sbbaseurl=>(is=>'rw',default=>sub{''});
 
 sub BUILD{
     my $self = shift;
+
     # register
-    my $meta = $self->meta();
+    my $meta = $self->meta;
     my $package = $meta->{package};
-    my $exported = $self->exported();
+    my $exported = $self->exported;
 
     if( $self->workleft == 0 ){
         $self->workleft(-1);
     }
 
-    for my $method ( $meta->get_all_methods) 
+    for my $method ( $meta->get_all_methods ) 
     {
         my $packname = $method->package_name;
         next if( $packname eq __PACKAGE__ ); # skip base class
@@ -58,7 +54,6 @@ sub BUILD{
     }
     
     $self->register();
-    weaken($self);
 }
 
 sub report{
@@ -72,10 +67,10 @@ sub report{
 
 sub unregister{
     my $self = shift;
-    foreach my $m (@{$self->exported}){
-        my $fname = $m->fully_qualified_name;
-        $self->worker->unregister_function($fname);
-    }
+#    foreach my $m (@{$self->exported}){
+#        my $fname = $m->fully_qualified_name;
+#        $self->worker->unregister_function($fname);
+#    }
     $self->worker(undef);
 }
 
@@ -123,8 +118,6 @@ sub register{
         );
     }
     $self->worker($w);
-    #weaken($w);
-    weaken($self);
 }
 
 sub work{
@@ -143,7 +136,6 @@ sub stop_safe{
 }
 
 sub DEMOLISH{
-    return if in_global_destruction;
     my $self = shift;
     $self->unregister() if $self->worker;
     DEBUG __PACKAGE__." DEMOLISHED";
@@ -173,7 +165,6 @@ sub Loop{
 
 }
 
-__PACKAGE__->meta->make_immutable;
 
 1;
 
@@ -185,7 +176,7 @@ make TestWorker.pm
 
     package TestWorker;
     use Any::Moose;
-    extends 'Gearman::SlotWorker';
+    extends 'AnyEvent::Gearman::WorkerPool::Worker';
 
     sub reverse{ # will be registered as function 'TestWorker::reverse'
         my $self = shift;

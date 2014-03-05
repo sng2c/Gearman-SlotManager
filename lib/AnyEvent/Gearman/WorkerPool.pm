@@ -1,19 +1,14 @@
-package Gearman::SlotManager;
+package AnyEvent::Gearman::WorkerPool;
 # ABSTRACT: Managing Worker's lifecycle with Slots
 # VERSION
-use namespace::autoclean;
-use Devel::GlobalDestruction;
 use Log::Log4perl qw(:easy);
-#Log::Log4perl->easy_init($DEBUG);
-Log::Log4perl->easy_init($ERROR);
 use Data::Dumper;
-use Any::Moose;
+use Moose;
 
 use AnyEvent;
 use AnyEvent::HTTPD;
-use Scalar::Util qw(weaken);
 
-use Gearman::Slot;
+use AnyEvent::Gearman::WorkerPool::Slot;
 has slotmap=>(is=>'rw', isa=>'HashRef', default=>sub{ return {}; });
 has config=>(is=>'rw', isa=>'HashRef',required=>1);
 has idle_watcher=>(is=>'rw');
@@ -41,7 +36,7 @@ sub BUILD{
 
         my @slots;
         foreach (0 .. $conf{max}-1){
-            my $slot = Gearman::Slot->new(
+            my $slot = AnyEvent::Gearman::WorkerPool::Slot->new(
                 job_servers=>$conf{job_servers},
                 libs=>$conf{libs},
                 workleft=>$conf{workleft},
@@ -74,7 +69,6 @@ sub BUILD{
         },
     );
     $self->httpd($httpd);
-    weaken($self);
 }
 
 sub slots{
@@ -102,7 +96,6 @@ sub start{
     }
     my $iw = AE::timer 0,5, sub{$self->on_idle;};
     $self->idle_watcher($iw);
-    #weaken($self);
 }
 
 sub on_idle{
@@ -149,12 +142,9 @@ sub stop{
 }
 
 sub DEMOLISH{
-    return if in_global_destruction;
     DEBUG __PACKAGE__.' DEMOLISHED';
-    
 }
 
-__PACKAGE__->meta->make_immutable;
 1;
 __END__
 
@@ -162,8 +152,96 @@ __END__
 
 =head1 SYNOPSIS
 
-Will be updated soon.
+worker_pool.pl
 
-See testManager.pl in Gearman::SlotManager directory.
+	#!/usr/bin/env perl
+
+	use AnyEvent;
+	use AnyEvent::Gearman::WorkerPool;
+	
+	my $cv = AE::cv;
+
+	my $sig = AE::signal 'INT'=> sub{ 
+		DEBUG "TERM!!";
+		$cv->send;
+	};
+
+	my $pool = AnyEvent::Gearman::WorkerPool->new(
+		config=>
+		{   
+			global=>{ # common config
+				job_servers=>['localhost'], # gearmand servers
+				libs=>['./lib'], # perl5 library paths
+				max=>3, # max workers
+				},  
+			slots=>{
+				'TestWorker'=>{ # module package name which extends AnyEvent::Gearman::WorkerPool::Worker.
+					min=>20, # min workers, count when started.
+					max=>50, # overrides global config's max. Workers will extend when all workers are busy.
+					workleft=>10, # workleft is life of worker. A worker will be respawned after used 10 times. 
+								# if workleft is set as 0, a worker will be never respawned.
+								# this feature is useful if worker code may has some memory leaks.
+				},
+				# you can place more worker modules here.
+			}   
+		}   
+	);
+
+	$pool->start();
+
+	my $res = $cv->recv;
+	undef($tt);
+	$pool->stop;
+	undef($pool);
+
+lib/TestWorker.pm
+
+	package TestWorker;
+	use Log::Log4perl qw(:easy);
+	Log::Log4perl->easy_init($DEBUG);
+
+	use Moose;
+
+	extends 'AnyEvent::Gearman::WorkerPool::Worker';
+
+	sub slowreverse{ # exported
+		my $self = shift;
+		my $data = shift;
+		sleep(1);
+		return reverse($data);
+	}
+	sub reverse{ # exported
+		my $self = shift;
+		my $data = shift;
+
+		return reverse($data);
+	}
+	sub _private{ # private
+		my $self = shift;
+		my $data = shift;
+		DEBUG "_private:".$data;
+	}
+
+	1;
+
+client.pl
+
+	#!/usr/bin/env perl
+	use AnyEvent;
+	use AnyEvent::Gearman;
+	my $cv = AE::cv;
+	my $c = gearman_client 'localhost';
+	$c->add_task(
+		'TestWorker::reverse' => 'HELLO WORLD', # 'MODULE_NAME::EXPORTED_METHOD' => PAYLOAD
+		on_complete=>sub{
+			my $reversed = $_[1];
+			$cv->send( $reversed );
+		},
+	);
+
+	my $reversed = $cv->recv;
+
+	print $reversed."\n"; # 'DLROW OLLEH'
+
 
 =cut
