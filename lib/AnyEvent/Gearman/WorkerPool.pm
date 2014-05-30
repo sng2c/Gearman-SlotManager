@@ -2,18 +2,21 @@ package AnyEvent::Gearman::WorkerPool;
 # ABSTRACT: Managing Worker's lifecycle with Slots
 # VERSION
 use Log::Log4perl qw(:easy);
+
 use Data::Dumper;
 use Moose;
+use Storable qw(freeze thaw);
 
 use AnyEvent;
-use AnyEvent::HTTPD;
+use AnyEvent::Gearman::Worker;
+use AnyEvent::Gearman::Worker::RetryConnection;
 
 use AnyEvent::Gearman::WorkerPool::Slot;
 has slotmap=>(is=>'rw', isa=>'HashRef', default=>sub{ return {}; });
 has config=>(is=>'rw', isa=>'HashRef',required=>1);
 has idle_watcher=>(is=>'rw');
-has httpd=>(is=>'rw');
-has port=>(is=>'rw',default=>sub{return 55995;});
+has boss_channel=>(is=>'rw', default=>sub{time});
+has reporters=>(is=>'rw');
 sub BUILD{
     my $self = shift;
 
@@ -27,6 +30,7 @@ sub BUILD{
     );
     %global = (%baseconf,%global);
     
+    my @reporters;
     my %confs = %{$conf->{slots}};
     foreach my $worker (keys %confs){
         my %conf = %{$confs{$worker}};
@@ -40,35 +44,38 @@ sub BUILD{
                 job_servers=>$conf{job_servers},
                 libs=>$conf{libs},
                 workleft=>$conf{workleft},
+                boss_channel=>$self->boss_channel,
                 worker_package=>$worker,
                 worker_channel=>$worker.'__'.$_,
-                sbbaseurl=>'http://localhost:'.$self->port,
             );
             push( @slots, $slot);
         }
         $self->slotmap->{$worker} = {conf=>\%conf, slots=>\@slots};
+
+        my $w = AnyEvent::Gearman::Worker->new(
+            job_servers => [@{$conf{job_servers}}],
+        );
+        $w = AnyEvent::Gearman::Worker::RetryConnection::patch_worker($w);
+        $w->register_function( "AnyEvent::Gearman::WorkerPool_".$self->boss_channel."::report" => sub{
+            my $job = shift;
+            my $workload = thaw($job->workload);
+            if( $workload ){
+                my $status = $workload->{status};
+                my ($key,$idx) = split(/__/,$workload->{channel});
+                DEBUG "SB $status $key $idx";
+                if( $status eq 'busy'){
+                    $self->slots($key)->[$idx]->is_busy(1);
+                }
+                elsif( $status eq 'idle'){
+                    $self->slots($key)->[$idx]->is_busy(0);
+                }
+            }
+            $job->complete;
+        } );
+        push(@reporters, $w);
     }
 
-    my $httpd = AnyEvent::HTTPD->new(port=>$self->port);
-    $httpd->reg_cb (
-        '/busy'=>sub{
-            my ($httpd,$req) = @_;
-            DEBUG "SB busy ".$req->parm('channel');
-            my ($key,$idx) = split(/__/,$req->parm('channel'));
-            DEBUG "SB busy $key $idx";
-            $self->slots($key)->[$idx]->is_busy(1);
-            $req->respond({content=>['text/plain','ok']});
-        },
-        '/idle'=>sub{
-            my ($httpd,$req) = @_;
-            DEBUG "SB idle ".$req->parm('channel');
-            my ($key,$idx) = split(/__/,$req->parm('channel'));
-            DEBUG "SB idle $key $idx";
-            $self->slots($key)->[$idx]->is_busy(0);
-            $req->respond({content=>['text/plain','ok']});
-        },
-    );
-    $self->httpd($httpd);
+    $self->reporters(\@reporters);
 }
 
 sub slots{
@@ -204,23 +211,29 @@ lib/TestWorker.pm
 
 	extends 'AnyEvent::Gearman::WorkerPool::Worker';
 
-	sub slowreverse{ # exported
-		my $self = shift;
-		my $data = shift;
-		sleep(1);
-		return reverse($data);
-	}
-	sub reverse{ # exported
-		my $self = shift;
-		my $data = shift;
-
-		return reverse($data);
-	}
-	sub _private{ # private
-		my $self = shift;
-		my $data = shift;
-		DEBUG "_private:".$data;
-	}
+	sub slowreverse{
+        DEBUG 'slowreverse';
+        my $self = shift;
+        my $job = shift;
+        my t = AE::timer 1,0, sub{
+            my $res = reverse($job->workload);
+            $job->complete( $res );
+        };
+    }
+    sub reverse{
+        DEBUG 'reverse';
+        my $self = shift;
+        my $job = shift;
+        my $res = reverse($job->workload);
+        DEBUG $res;
+        $job->complete( $res );
+    }
+    sub _private{
+        my $self = shift;
+        my $job = shift;
+        DEBUG "_private:".$job->workload;
+        $job->complete();
+    }
 
 	1;
 

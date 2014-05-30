@@ -1,11 +1,12 @@
 package Gear;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+# Log::Log4perl->easy_init($DEBUG);
 
 use Exporter;
 @ISA = qw(Exporter);
 @EXPORT = qw(gstart gstop);
 sub gstart{
+    gstop;
     my $port = shift;
     $pid = fork;
     if( $pid ){
@@ -21,11 +22,13 @@ sub gstart{
 }
 
 sub gstop{
-    open(FILE,'gear.pid');
-    chomp($pid=<FILE>);
-    close(FILE);
+    if( -e 'gear.pid'){
+        open(FILE,'gear.pid');
+        chomp($pid=<FILE>);
+        close(FILE);
 
-    kill 9, $pid;
-    unlink 'gear.pid';
-    DEBUG "gearmand STOPPED #$pid";
+        kill 9, $pid;
+        unlink 'gear.pid';
+        DEBUG "gearmand STOPPED #$pid";
+    }
 }

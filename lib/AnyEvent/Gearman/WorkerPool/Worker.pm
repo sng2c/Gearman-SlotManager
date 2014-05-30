@@ -5,12 +5,17 @@ package AnyEvent::Gearman::WorkerPool::Worker;
 
 use Log::Log4perl qw(:easy);
 
+
+use AnyEvent::Gearman::Client;
+use AnyEvent::Gearman::Worker;
+use AnyEvent::Gearman::Worker::RetryConnection;
+use Storable qw(freeze thaw);
+
 use Moose;
-use Gearman::Worker;
-use LWP::Simple;
 
 # options
-has job_servers=>(is=>'rw',isa=>'ArrayRef', required=>1);
+has job_servers=>(is=>'rw', required=>1);
+has boss_channel => (is=>'rw',required=>1, default=>'');
 has channel=>(is=>'rw',required=>1);
 has workleft=>(is=>'rw',isa=>'Int', default=>-1);
 
@@ -20,11 +25,23 @@ has worker=>(is=>'rw');
 
 has is_stopped=>(is=>'rw');
 has is_busy=>(is=>'rw');
+has reporter=>(is=>'rw');
 
-has sbbaseurl=>(is=>'rw',default=>sub{''});
+has cv=>(is=>'rw');
 
 sub BUILD{
     my $self = shift;
+
+    $self->cv->begin;
+
+    my $js = $self->job_servers;
+
+    if( $self->boss_channel ){
+        my $client = AnyEvent::Gearman::Client->new(
+            job_servers => [@$js]
+        );
+        $self->reporter($client);
+    }
 
     # register
     my $meta = $self->meta;
@@ -46,56 +63,69 @@ sub BUILD{
             if( $methname !~ /^_/ && $methname ne uc($methname) && $methname ne 'meta' )
             {
                 if( !$meta->has_attribute($methname) ){
-                    DEBUG 'filtered: '.$method->fully_qualified_name;
+                    #DEBUG 'filtered: '.$method->fully_qualified_name;
                     push(@{$exported},$method);
                 }
             }
         }
     }
     
-    $self->register();
+    $self->register($js);
+
+    
+
 }
 
 sub report{
     my $self = shift;
     my $msg = lc(shift);
-    if($self->sbbaseurl){
-        DEBUG "report $msg ".$self->channel;
-        get($self->sbbaseurl.'/'.$msg.'?channel='.$self->channel);
-    }
+
+    DEBUG "report $msg boss_channel". $self->boss_channel;
+    return unless $self->reporter;
+
+    
+    $self->reporter->add_task_bg(
+        'AnyEvent::Gearman::WorkerPool_'.$self->boss_channel.'::report'=> freeze({status=>$msg, channel=>$self->channel})
+    );
 }
 
 sub unregister{
     my $self = shift;
-#    foreach my $m (@{$self->exported}){
-#        my $fname = $m->fully_qualified_name;
-#        $self->worker->unregister_function($fname);
-#    }
-    $self->worker(undef);
+    foreach my $m (@{$self->exported}){
+        my $fname = $m->fully_qualified_name;
+        $self->worker->unregister_function($fname) if $self->worker;
+    }
 }
 
 sub register{
     my $self = shift;
-    my $w = Gearman::Worker->new;
-    $w->job_servers(@{$self->job_servers});
+    my $js = shift;
+    my $w = AnyEvent::Gearman::Worker->new(
+        job_servers => [@$js],
+    );
+    $w = AnyEvent::Gearman::Worker::RetryConnection::patch_worker($w);
+
     foreach my $m (@{$self->exported}){
         DEBUG "register ".$m->fully_qualified_name;
         my $fname = $m->fully_qualified_name;
         my $fcode = $m->body;
+
         $w->register_function($fname =>
             sub{
                 my $job = shift;
-                my $workload = $job->arg;
+                my $workload = $job->workload;
 
                 DEBUG "[$fname] '$workload' workleft:".$self->workleft;
                 $self->report('BUSY');
                 $self->is_busy(1);
+
                 my $res;
                 eval{
-                    $res = $fcode->($self,$workload);
+                    $res = $fcode->($self,$job);
                 };
                 if ($@){
                     ERROR $@;
+                    $w->fail;
                     return;
                 }
 
@@ -105,25 +135,20 @@ sub register{
                 if( $self->workleft > 0 ){
                     $self->workleft($self->workleft-1);
                 }
+
                 if( $self->is_stopped ){
                     $self->stop_safe('stopped');
                 }
+
                 if( $self->workleft == 0 ){
                     $self->stop_safe('overworked');
                 }
-
-
-                return $res;
             }
         );
     }
-    $self->worker($w);
-}
 
-sub work{
-    my $self = shift;
-    $self->worker->work(stop_if=>sub{ $self->is_stopped } );
-    DEBUG "stop completely";
+    $self->worker($w);
+    
 }
 
 sub stop_safe{
@@ -133,6 +158,8 @@ sub stop_safe{
     $self->unregister;
     $self->worker(undef);
     DEBUG "stop_safe $msg";
+
+    $self->cv->end;
 }
 
 sub DEMOLISH{
@@ -149,20 +176,23 @@ sub Loop{
     die 'You need to use your own class extending '. __PACKAGE__ .'!' if $class eq __PACKAGE__;
     my %opt = @_;
 
+    my $cv = AE::cv;
+
+    
     my $worker;
-    $SIG{INT} = sub{
+    my $sig = AE::signal INT=>sub{
         $worker->stop_safe('SIGINT');
-        exit;
+        $cv->send;
     };
 
-
+    $cv->begin(sub{ $cv->send; });
     eval{
-        $worker = $class->new(%opt);
+        $worker = $class->new(%opt,cv=>$cv);
     };
-    die $@ if($@);
+    $cv->end;
 
-    $worker->work();
-
+    $cv->recv;
+    DEBUG "stop completely";
 }
 
 
@@ -178,20 +208,25 @@ make TestWorker.pm
     use Any::Moose;
     extends 'AnyEvent::Gearman::WorkerPool::Worker';
 
-    sub reverse{ # will be registered as function 'TestWorker::reverse'
+    sub slowreverse{
+        DEBUG 'slowreverse';
         my $self = shift;
-        my $data = shift;
-        return reverse($data);
+        my $job = shift;
+        my t = AE::timer 1,0, sub{
+            my $res = reverse($job->workload);
+            $job->complete( $res );
+        };
     }
-
-    sub _private{  # not care leading '_'
+    sub reverse{
         my $self = shift;
-        my $data = shift;
-        return $data;
+        my $job = shift;
+        my $res = reverse($job->workload);
+        $job->complete( $res );
     }
-
-    sub NOTVISIBLE{ # not care all-uppercase
-        #...
+    sub _private{
+        my $self = shift;
+        my $job = shift;
+        $job->complete();
     }
 
 You can see only 'reverse'

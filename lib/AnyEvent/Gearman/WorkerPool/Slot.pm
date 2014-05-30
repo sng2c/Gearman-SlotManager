@@ -18,7 +18,7 @@ has worker_channel=>(is=>'rw');
 
 has is_busy=>(is=>'rw',default=>0);
 has is_stopped=>(is=>'rw',default=>1);
-has sbbaseurl=>(is=>'rw',default=>sub{''});
+has boss_channel=>(is=>'rw',default=>'');
 
 has worker_watcher=>(is=>'rw');
 has worker_pid=>(is=>'rw');
@@ -68,14 +68,14 @@ sub start{
     }
     else{
         my $class = $self->worker_package;
+        my $boss_channel = $self->boss_channel;
         my $worker_channel = $self->worker_channel;
         my $libs = join(' ',map{"-I$_"}@{$self->libs});;
         my $workleft = $self->workleft;
-        my $sbbaseurl = $self->sbbaseurl;
 
         my $job_servers = '['.join(',',map{"\"$_\""}@{$self->job_servers}).']';
 
-        my $cmd = qq!$^X $libs -M$class -e '$class -> Loop(job_servers=>$job_servers,channel=>"$worker_channel",workleft=>$workleft,sbbaseurl=>"$sbbaseurl");' !;
+        my $cmd = qq!$^X $libs -M$class -e '$class->Loop(job_servers=>$job_servers,boss_channel=>"$boss_channel",channel=>"$worker_channel",workleft=>"$workleft");' !;
         
         DEBUG 'start '.$cmd;
         my $res = 0;
@@ -90,7 +90,7 @@ sub DEMOLISH{
     my $self = shift;
     if( $self->worker_pid ){
         DEBUG 'killed child forcely';
-        kill 9, $self->worker_pid;
+        kill INT => $self->worker_pid;
     }
 }
 

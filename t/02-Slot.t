@@ -3,7 +3,7 @@ package main;
 use lib qw( lib t/lib );
 use Test::More tests=>3;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($DEBUG);
+# Log::Log4perl->easy_init($DEBUG);
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;

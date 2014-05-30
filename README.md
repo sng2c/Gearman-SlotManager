@@ -4,7 +4,7 @@ AnyEvent::Gearman::WorkerPool - Managing Worker's lifecycle with Slots
 
 # VERSION
 
-version 0.4
+version 1.0
 
 # SYNOPSIS
 
@@ -60,23 +60,29 @@ lib/TestWorker.pm
 
         extends 'AnyEvent::Gearman::WorkerPool::Worker';
 
-        sub slowreverse{ # exported
-                my $self = shift;
-                my $data = shift;
-                sleep(1);
-                return reverse($data);
-        }
-        sub reverse{ # exported
-                my $self = shift;
-                my $data = shift;
-
-                return reverse($data);
-        }
-        sub _private{ # private
-                my $self = shift;
-                my $data = shift;
-                DEBUG "_private:".$data;
-        }
+        sub slowreverse{
+        DEBUG 'slowreverse';
+        my $self = shift;
+        my $job = shift;
+        my t = AE::timer 1,0, sub{
+            my $res = reverse($job->workload);
+            $job->complete( $res );
+        };
+    }
+    sub reverse{
+        DEBUG 'reverse';
+        my $self = shift;
+        my $job = shift;
+        my $res = reverse($job->workload);
+        DEBUG $res;
+        $job->complete( $res );
+    }
+    sub _private{
+        my $self = shift;
+        my $job = shift;
+        DEBUG "_private:".$job->workload;
+        $job->complete();
+    }
 
         1;
 

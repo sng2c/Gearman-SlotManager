@@ -5,9 +5,11 @@ use Test::More tests=>12;
 use Gear;
 use AnyEvent;
 use AnyEvent::Gearman;
+use AnyEvent::Gearman::Client;
 use AnyEvent::Gearman::WorkerPool;
 use Log::Log4perl qw(:easy);
-Log::Log4perl->easy_init($ERROR);
+# Log::Log4perl->easy_init($DEBUG);
+
 
 use Scalar::Util qw(weaken);
 my $port = '9955';
@@ -20,10 +22,12 @@ my $cv = AE::cv;
 
 my $sig = AE::signal 'INT'=> sub{ 
 DEBUG "TERM!!";
-$cv->send;
+    $cv->send;
 };
 
 my $t = AE::timer 10,0,sub{ $cv->send('timeout')};
+
+
 my $slotman = AnyEvent::Gearman::WorkerPool->new(
     config=>
     {
@@ -40,31 +44,42 @@ my $slotman = AnyEvent::Gearman::WorkerPool->new(
             }
         }
     },
-    port=>55595,
 );
 
 $slotman->start();
 
+
+
 my $c = gearman_client @js;
-foreach (1 .. 10){
+
+
+$cv->begin( sub{ $cv->send } );
+my @tasks;
+foreach (1..10 ){
     my $n = $_;
     my $str = "HELLO$n";
-    DEBUG 'cl';
-
-    $c->add_task(
+    $cv->begin;
+    my $res = $c->add_task(
         'TestWorker::reverse'=>$str,
-        on_complete=>sub{is $_[1], reverse($str),"check $n";},
+        on_complete=>sub{
+            my $job = shift;
+            my $res = shift;
+            is $res,reverse($str),"check $n $res";
+            $cv->end;
+        },
     );
+    push(@tasks, $res);
 }
-my $tt = AE::timer 5,0,sub{ 
-    $cv->send;
-};
-
+    
+$cv->end;
+    
+DEBUG 'waiting...';
 my $res = $cv->recv;
 isnt $res,'timeout','ends successfully';
 undef($tt);
 $slotman->stop;
 undef($slotman);
+
 gstop();
 
 done_testing();
